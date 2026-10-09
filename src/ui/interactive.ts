@@ -15,6 +15,7 @@ export async function interactive(): Promise<{ command: 'inspect' | 'extract'; i
     if (command === 'extract') {
       options.out = unwrap(await p.text({ ...common, message: '输出目录', defaultValue: './oppo-live-output', placeholder: './oppo-live-output' }));
       options.onConflict = unwrap(await p.select({ ...common, message: '输出文件已存在时', options: [{ value: 'error' as const, label: '报告冲突', hint: '继续处理其他照片' }, { value: 'skip' as const, label: '跳过' }, { value: 'rename' as const, label: '自动添加编号' }] }));
+      options.videoCompat = unwrap(await p.select({ ...common, message: '视频输出方式', options: [{ value: 'original' as const, label: '保留原始视频', hint: '默认，逐字节提取' }, { value: 'apple' as const, label: '改善 Apple 兼容性', hint: '安全调整 HEVC 封装，不转码' }] }));
       options.saveExtra = unwrap(await p.confirm({ ...common, message: '如有 Oplus 附加数据，另存为 .extra.bin？', initialValue: false, active: '是', inactive: '否' }));
       options.dryRun = unwrap(await p.confirm({ ...common, message: '仅预演，查看提取计划？', initialValue: false, active: '是', inactive: '否' }));
     }

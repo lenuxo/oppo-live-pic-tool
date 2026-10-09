@@ -23,7 +23,7 @@ export function capabilities() {
     commands: [
       { name: 'capabilities', requiredArguments: [], writesFiles: false },
       { name: 'inspect', requiredArguments: ['input'], writesFiles: 'only-with-report', options: ['--recursive', '--recover', '--jobs', '--report'] },
-      { name: 'extract', requiredArguments: ['input'], writesFiles: true, dryRunWritesFiles: false, options: ['--recursive', '--recover', '--jobs', '--out', '--on-conflict', '--allow-unknown-vendor', '--save-extra', '--dry-run', '--report'] },
+      { name: 'extract', requiredArguments: ['input'], writesFiles: true, dryRunWritesFiles: false, options: ['--recursive', '--recover', '--jobs', '--out', '--on-conflict', '--allow-unknown-vendor', '--save-extra', '--video-compat', '--dry-run', '--report'] },
     ],
     globalOptions: ['--agent', '--request-id', '--help', '--version'],
     optionSchema: {
@@ -33,6 +33,7 @@ export function capabilities() {
       '--out': { type: 'path', default: './oppo-live-output' }, '--report': { type: 'path', overwrite: false },
       '--on-conflict': { type: 'enum', values: ['error', 'skip', 'rename'], default: 'error' },
       '--allow-unknown-vendor': { type: 'boolean', default: false, deprecated: true, effect: 'none; validated layouts are accepted regardless of vendor' }, '--save-extra': { type: 'boolean', default: false },
+      '--video-compat': { type: 'enum', values: ['original', 'apple'], default: 'original' },
       '--dry-run': { type: 'boolean', default: false },
     },
     responseSchema: {
@@ -42,7 +43,7 @@ export function capabilities() {
       error: 'null or {code, message, optional cleanupIssues}',
       outputPaths: 'absolute paths; pending means not completed, not safe to blindly retry',
     },
-    defaults: { preserveSource: true, overwrite: false, jobs: 4, out: './oppo-live-output', onConflict: 'error', saveExtra: false, vendorPolicy: 'any-validated-layout' },
+    defaults: { preserveSource: true, overwrite: false, jobs: 4, out: './oppo-live-output', onConflict: 'error', saveExtra: false, videoCompat: 'original', vendorPolicy: 'any-validated-layout' },
     constraints: { jobs: { minimum: 1, maximum: 32 }, onConflict: ['error', 'skip', 'rename'], followsSymlinks: false },
     formats: { supported: ['JPEG XMP MotionPhoto', 'JPEG MicroVideoOffset', 'JPEG + HDR GainMap', 'Oplus v2 MotionPhoto', 'JPEG primary padding (without GainMap)'], verifiedSamples: ['OPPO Find X9 HDR', 'Oplus v2 VESDK'], unsupported: ['HEIC', 'AVIF', 'extended XMP', 'padded GainMap layouts', 'unknown multi-media layouts'] },
     statuses: ['success', 'partial', 'failed', 'cancelled'],
@@ -55,6 +56,7 @@ export function capabilities() {
       REPORT_CONFLICT: { action: 'choose a new report path', automaticRetry: false },
       CANCELLED: { action: 'inspect completed results and output conflicts before retry', automaticRetry: false },
     },
+    videoCompatibility: { apple: 'Only non-fragmented single-track hev1 with complete VPS/SPS/PPS and no in-band parameter sets is adjusted; otherwise original video is retained with a structured reason. No transcoding or guarantee of playback on every Apple device.' },
     validation: 'container structure only; no runtime image/video decoding',
   };
 }

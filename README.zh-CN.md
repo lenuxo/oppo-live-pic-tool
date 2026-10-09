@@ -4,7 +4,7 @@
 
 [English](README.md) | 简体中文
 
-Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.4.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
+Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.5.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
 
 ## 安装
 
@@ -59,6 +59,7 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 | `--recover` | 元数据定位失败或缺失时，分块搜索并验证尾部 MP4 |
 | `--allow-unknown-vendor` | 旧版兼容参数；有效实况已默认允许提取，不限制厂商 |
 | `--jobs <n>` | 并发 1–32，默认 4 |
+| `--video-compat original\|apple` | 默认 original；apple 在安全条件下调整 HEVC 封装，不转码 |
 | `--save-extra` | 将 Oplus 主视频后的附加内容逐字节另存为同名 `.extra.bin`，仅 extract |
 | `--report <file>` | 保存版本化 JSON 报告；已有报告不覆盖；dry-run 不写报告 |
 | `--json` | stdout 输出完整 JSON；不显示交互或动画 |
@@ -82,7 +83,19 @@ Oplus 容器在主 MP4 后可能包含附加数据。工具按 `VideoLength` 提
 
 Oplus v2 格式兼容性与拍摄厂商分开报告：兼容文件可以提取，但不会据此宣称已确认由 OPPO 手机拍摄。
 
-静态图不重新编码：保留 JPEG 压缩数据、EXIF 和增益图；清理 Google/Oplus 实况字段及视频目录条目，保留 HDR 目录，按元数据长度变化修正 MP Index。MP4 逐字节复制，保留原始音视频和时间戳。
+静态图不重新编码：保留 JPEG 压缩数据、EXIF 和增益图；清理 Google/Oplus 实况字段及视频目录条目，保留 HDR 目录，按元数据长度变化修正 MP Index。默认 MP4 逐字节复制，保留原始音视频和时间戳。
+
+### Apple 兼容视频输出
+
+```bash
+oppo-live extract ./photos --out ./output --video-compat apple
+```
+
+默认 `original` 模式逐字节复制视频。可选 `apple` 模式检查 HEVC 配置和全部视频样本，满足条件时将 `hev1` 样本条目调整为 `hvc1`，并更新参数集完整性标记。音视频样本、时间戳和静态图输出保持不变，不需要 FFmpeg，也不转码。
+
+已经是 `hvc1` 或其他编码的文件不调整。分片 MP4、多视频轨道或多样本描述、缺失参数集及视频样本内含参数集的文件暂不调整。工具仍正常提取原视频，JSON 结果的 `videoCompatibility` 记录 `status`、`code` 和 `reason`。预演仅报告计划调整，不写文件；普通输出仅汇总调整数量，不逐张列举。
+
+该模式改善 macOS 预览兼容性，但不保证所有 Apple 设备都能播放，不会将 HEVC 转为 H.264，也不会将 HDR 转为 SDR。
 
 ### 当前限制
 
@@ -116,6 +129,8 @@ oppo-live extract ./photos --out ./output --agent --report ./agent-report.json
 退出码仍为 0 完成、1 部分或全部处理失败、2 调用参数错误、130 取消。AI 即使收到非零退出码，也应尝试解析 stdout。`--report` 在机器模式下保存相同的机器响应；dry-run 不写报告。报告已有文件时不会覆盖。
 
 `capabilities` 描述命令、参数、默认值、格式支持范围、写文件行为与错误处理建议。`--request-id` 在成功或错误响应中原样返回。第一版不支持 stdin JSON 或 JSONL；请使用 argv 参数数组调用，避免拼接 shell 命令。
+
+提取结果仅汇总数量及跳过原因，不逐张列举常规分析信息。最多展示 5 个失败文件和 5 个清理残留；预演最多展示 3 个提取计划。完整详情可通过 `--json` 或 `--report` 查看。
 
 ## 报告与异常处理
 

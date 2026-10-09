@@ -69,10 +69,6 @@ export class Reporter {
       if (this.pretty) p.log.info(message, { output: process.stderr }); else process.stdout.write(`${message}\n`);
     } else if (report.reportFile?.status === 'planned') this.note('预演未保存报告；可使用 --json 重定向保存');
   }
-  private detail(message: string) {
-    if (this.pretty && /保留 HDR|未进行视频解码验证/.test(message)) p.log.info(safeText(message), { output: process.stderr });
-    else this.note(message);
-  }
   private note(message: string, error = false) {
     if (this.pretty) (error ? p.log.error : p.log.warn)(safeText(message), { output: process.stderr });
     else process.stderr.write(`  ${safeText(message)}\n`);
@@ -84,24 +80,40 @@ export class Reporter {
     const extraCount = results.filter(r => r.extra && ['extracted', 'planned'].includes(r.status)).length;
     const text = `成功提取  ${counts.extracted}\n计划提取  ${counts.planned}\n跳过      ${counts.skipped}\n失败      ${counts.failed}${extraCount ? `\n另存附加  ${extraCount}` : ''}`;
     if (this.pretty) p.note(text, '处理结果', { output: process.stderr }); else process.stdout.write(`${text}\n`);
-    for (const r of results.filter(r => r.status === 'planned').slice(0, 10)) {
+    const compatibility = results.filter(r => r.status === 'extracted' || r.status === 'planned').map(r => r.videoCompatibility).filter(r => !!r);
+    if (compatibility.length) {
+      const adjusted = compatibility.filter(r => r.status === 'adjusted').length;
+      const planned = compatibility.filter(r => r.status === 'planned').length;
+      const retained = compatibility.filter(r => r.code === 'APPLE_COMPAT_UNAVAILABLE').length;
+      const message = `Apple 兼容：已调整 ${adjusted}${planned ? ` · 计划调整 ${planned}` : ''} · 保留原视频 ${compatibility.length - adjusted - planned}${retained ? `（${retained} 个无法安全调整，原因见 JSON 报告）` : ''}`;
+      if (this.pretty) p.log.info(message, { output: process.stderr }); else process.stdout.write(`${message}\n`);
+    }
+    const plans = results.filter(r => r.status === 'planned');
+    for (const r of plans.slice(0, 3)) {
       const targets = [r.image, r.video, r.extra].filter((path): path is string => !!path).map(path => relative(out, path));
       const message = safeText(`${basename(r.input)} → ${targets.join(' + ')}`);
       if (this.pretty) p.log.step(message, { output: process.stderr }); else process.stdout.write(`${message}\n`);
     }
-    const hiddenPlans = Math.max(0, results.filter(r => r.status === 'planned').length - 10);
-    if (hiddenPlans) this.note(`另有 ${hiddenPlans} 个提取计划，使用 --json 查看完整路径`);
-    for (const r of results.filter(r => r.status === 'failed' || r.status === 'skipped').slice(0, 10)) {
-      const message = safeText(`${basename(r.input)}：${r.reason ?? r.status}`);
-      if (r.status === 'skipped' && this.pretty) p.log.info(message, { output: process.stderr });
-      else this.note(message, r.status === 'failed');
+    if (plans.length > 3) this.note(`另有 ${plans.length - 3} 个提取计划，使用 --json 查看完整路径`);
+    const skipped = new Map<string, number>();
+    for (const r of results.filter(r => r.status === 'skipped')) {
+      const reason = r.reason ?? '跳过';
+      skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
     }
-    const visible = new Set(results.filter(r => r.status === 'extracted' || r.status === 'planned').map(r => r.input));
-    const warnings = [...new Set(report.results.filter(r => visible.has(r.input)).flatMap(r => (r.warnings ?? []).map(w => `${basename(r.input)}：${w}`)))];
-    for (const warning of warnings.slice(0, 10)) this.detail(warning);
-    const hidden = Math.max(0, results.filter(r => r.status === 'failed' || r.status === 'skipped').length - 10) + Math.max(0, warnings.length - 10);
-    if (hidden) this.note(`另有 ${hidden} 条详情，使用 --json 查看完整报告`);
-    for (const r of results) for (const issue of r.cleanupIssues ?? []) this.note(`未能清理 ${issue.path}：${issue.message}`, true);
+    if (skipped.size) {
+      const reasons = [...skipped].slice(0, 5).map(([reason, count]) => `${safeText(reason)} ${count} 张`);
+      if (skipped.size > 5) reasons.push(`另有 ${skipped.size - 5} 类原因`);
+      const message = `跳过原因：${reasons.join(' · ')}`;
+      if (this.pretty) p.log.info(message, { output: process.stderr }); else process.stdout.write(`${message}\n`);
+    }
+    const failed = results.filter(r => r.status === 'failed');
+    for (const r of failed.slice(0, 5)) this.note(`${basename(r.input)}：${r.reason ?? '处理失败'}`, true);
+    if (failed.length > 5) this.note(`另有 ${failed.length - 5} 个失败文件，使用 --json 或 --report 查看完整详情`, true);
+    const cleanup = results.flatMap(r => r.cleanupIssues ?? []);
+    for (const issue of cleanup.slice(0, 5)) this.note(`未能清理 ${issue.path}：${issue.message}`, true);
+    if (cleanup.length > 5) this.note(`另有 ${cleanup.length - 5} 个清理残留，请查看 JSON 报告中的 cleanupIssues`, true);
+    const hint = '完整详情：--json 或 --report <file>';
+    if (this.pretty) p.log.info(hint, { output: process.stderr }); else process.stdout.write(`${hint}\n`);
     this.reportStatus(report);
     const end = counts.planned ? '预演完成，未写入文件' : counts.extracted ? `文件已保存至 ${safeText(out)}` : '处理完成，没有新文件';
     if (this.pretty) p.outro(end, { output: process.stderr }); else process.stdout.write(`${end}\n`);

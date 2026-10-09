@@ -5,9 +5,10 @@ import { Reader } from '../io/reader.js';
 import { inside } from '../io/scanner.js';
 import { parseJpeg } from '../formats/jpeg.js';
 import { parseXmp } from '../formats/xmp.js';
+import { planAppleCompatibility, type AppleCompatibility } from '../formats/apple-compat.js';
 import { validateMp4 } from '../formats/mp4.js';
-import { PhotoError, type Inspection, type ExtractOptions, type ExtractionResult } from './types.js';
-export interface ExtractionPlan { inspection: Inspection; image: string; video: string; extra?: string; options: ExtractOptions }
+import { PhotoError, type Inspection, type ExtractOptions, type ExtractionResult, type Patch } from './types.js';
+export interface ExtractionPlan { inspection: Inspection; image: string; video: string; extra?: string; options: ExtractOptions; videoPatches?: Patch[]; videoCompatibility?: AppleCompatibility }
 async function exists(path: string): Promise<boolean> {
   try { await lstat(path); return true; } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
 }
@@ -32,11 +33,23 @@ export async function planExtraction(inspection: Inspection, options: ExtractOpt
     if (extra) extra = `${stem}-${suffix}.extra.bin`;
   }
   reserved.add(image); reserved.add(video); if (extra) reserved.add(extra);
-  return { inspection, image, video, extra, options };
+  let videoPatches: Patch[] | undefined, videoCompatibility: AppleCompatibility | undefined;
+  if (options.videoCompat === 'apple') {
+    const reader = await Reader.open(input, options.signal);
+    try {
+      if (reader.stamp !== inspection.layout.fingerprint) throw new PhotoError('SOURCE_CHANGED', '源文件在检查后发生变化');
+      const compatibility = await planAppleCompatibility(reader, inspection.motion.video!);
+      videoPatches = compatibility.patches;
+      videoCompatibility = compatibility.compatibility;
+      if (options.dryRun && videoCompatibility.status === 'adjusted') videoCompatibility = { ...videoCompatibility, status: 'planned', reason: '已验证可调整为 hvc1；预演未写入文件' };
+      await reader.assertUnchanged();
+    } finally { await reader.close(); }
+  }
+  return { inspection, image, video, extra, options, videoPatches, videoCompatibility };
 }
 export async function executeExtraction(plan: ExtractionPlan): Promise<ExtractionResult> {
   const { inspection, image, video, extra, options } = plan;
-  const result: ExtractionResult = { input: inspection.input, status: options.dryRun ? 'planned' : 'extracted', image, video, ...(extra ? { extra } : {}) };
+  const result: ExtractionResult = { input: inspection.input, status: options.dryRun ? 'planned' : 'extracted', image, video, ...(extra ? { extra } : {}), ...(plan.videoCompatibility ? { videoCompatibility: plan.videoCompatibility } : {}) };
   if (options.dryRun) return result;
   const tempImage = temporaryPath(image);
   const tempVideo = temporaryPath(video);
@@ -72,7 +85,11 @@ export async function executeExtraction(plan: ExtractionPlan): Promise<Extractio
           await copy(cursor, inspection.layout!.imageEnd);
         } else {
           const range = mode === 'extra' ? inspection.motion.extra! : inspection.motion.video!;
-          await copy(range.offset, range.offset + range.length);
+          let cursor = range.offset;
+          for (const patch of mode === 'video' ? plan.videoPatches ?? [] : []) {
+            await copy(cursor, patch.offset); await bytes(patch.bytes); cursor = patch.offset + patch.length;
+          }
+          await copy(cursor, range.offset + range.length);
         }
         await out.sync();
       } finally { await out.close(); }

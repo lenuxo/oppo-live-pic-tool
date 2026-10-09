@@ -4,7 +4,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.4.0. See the [iteration plan](ITERATION.md) for planned improvements.
+A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.5.0. See the [iteration plan](ITERATION.md) for planned improvements.
 
 ## Installation
 
@@ -59,6 +59,7 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 | `--recover` | Search in chunks and validate a trailing MP4 when metadata is missing or cannot locate it |
 | `--allow-unknown-vendor` | Deprecated compatibility option; validated motion photos are accepted regardless of vendor |
 | `--jobs <n>` | Concurrency from 1 to 32; defaults to 4 |
+| `--video-compat original\|apple` | Defaults to original; apple safely adjusts eligible HEVC packaging without transcoding |
 | `--save-extra` | Copy data following the Oplus primary video into a matching `.extra.bin` file; extract only |
 | `--report <file>` | Save a versioned JSON report; existing reports are never overwritten; dry-run does not write reports |
 | `--json` | Write the complete JSON result to stdout without interaction or animation |
@@ -82,7 +83,19 @@ Legacy JPEG MicroVideo files are supported through `MicroVideo="1"` and `MicroVi
 
 Oplus v2 format compatibility and camera vendor identification are reported separately. A compatible file can be extracted without claiming that its camera vendor has been confirmed as OPPO.
 
-Still images are not re-encoded. JPEG compressed data, EXIF, and gain maps are retained. Google/Oplus motion fields and video directory entries are removed, HDR directory entries are preserved, and MP Index offsets are adjusted for metadata length changes. MP4 bytes are copied unchanged, preserving original audio, video, and timestamps.
+Still images are not re-encoded. JPEG compressed data, EXIF, and gain maps are retained. Google/Oplus motion fields and video directory entries are removed, HDR directory entries are preserved, and MP Index offsets are adjusted for metadata length changes. By default, MP4 bytes are copied unchanged, preserving original audio, video, and timestamps.
+
+### Apple-compatible video output
+
+```bash
+oppo-live extract ./photos --out ./output --video-compat apple
+```
+
+The default `original` mode copies video bytes unchanged. Optional `apple` mode checks HEVC configuration and all video samples before changing an eligible `hev1` sample entry to `hvc1` and updating parameter-set completeness flags. Audio/video samples, timestamps, and image output are unchanged. This mode does not require FFmpeg and never transcodes.
+
+Already-`hvc1` and other codec entries are left unchanged. Fragmented MP4, multiple video tracks or sample descriptions, missing parameter sets, and parameter sets inside video samples are not adjusted. Extraction still succeeds with the original video; `videoCompatibility` in JSON results records `status`, `code`, and `reason`. Dry-run reports a planned adjustment without writing files. Normal output summarizes adjustment counts rather than listing every file.
+
+This can improve macOS preview compatibility but cannot guarantee playback on every Apple device. It does not convert HEVC to H.264 or change HDR to SDR.
 
 ### Limitations
 
@@ -115,6 +128,8 @@ Cancellation preserves completed results and lists unfinished files as `PENDING`
 Exit codes remain 0 for completion, 1 for partial or total processing failure, 2 for invalid invocation arguments, and 130 for cancellation. AI callers should attempt to parse stdout even after a nonzero exit code. In agent mode, `--report` saves the same machine response. Dry-run does not write reports, and existing reports are never overwritten.
 
 `capabilities` describes commands, options, defaults, supported formats, file-writing behavior, and error-handling guidance. `--request-id` is echoed unchanged in success and error responses. This version does not accept stdin JSON or JSONL. Invoke the process with an argv array instead of constructing shell command strings.
+
+Extraction output summarizes counts and groups skip reasons instead of listing routine per-file analysis. It shows up to five failures and five cleanup issues, and up to three plans during dry-run. Full details remain available through `--json` or `--report`.
 
 ## Reports and error handling
 

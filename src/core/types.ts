@@ -1,3 +1,4 @@
+import type { AppleCompatibility } from '../formats/apple-compat.js';
 export type Range = { offset: number; length: number };
 export type Patch = Range & { bytes: Buffer };
 export interface Inspection {
@@ -14,10 +15,11 @@ export interface Inspection {
 export interface ExtractOptions {
   out: string; base: string; conflict: 'error' | 'skip' | 'rename';
   /** Deprecated compatibility option; valid layouts are accepted regardless of vendor. */
-  allowUnknownVendor?: boolean; saveExtra?: boolean; dryRun?: boolean; signal?: AbortSignal;
+  allowUnknownVendor?: boolean; videoCompat?: 'original' | 'apple'; saveExtra?: boolean; dryRun?: boolean; signal?: AbortSignal;
 }
 export interface ExtractionResult {
   input: string; status: 'extracted' | 'planned' | 'skipped' | 'failed';
+  videoCompatibility?: AppleCompatibility;
   image?: string; video?: string; extra?: string; warnings?: string[]; outputsCommitted?: boolean; cleanupIssues?: { path: string; message: string }[]; reason?: string; code?: string;
 }
 export class PhotoError extends Error {

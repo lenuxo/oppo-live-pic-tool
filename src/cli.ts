@@ -15,7 +15,7 @@ import type { Inspection, ExtractionResult } from './core/types.js';
 // Bootstrap only affects rendering of parse errors; Commander still validates argv.
 function bootstrap(args: string[]) {
   let agent = false, requestId: string | undefined, command: AgentCommand = null;
-  const values = new Set(['--request-id', '--out', '-o', '--report', '--jobs']);
+  const values = new Set(['--request-id', '--out', '-o', '--report', '--jobs', '--video-compat']);
   for (let i = 0; i < args.length; i++) {
     const token = args[i]!;
     if (token === '--') break;
@@ -86,7 +86,7 @@ async function run(command: 'inspect' | 'extract', input: string, options: RunOp
   for (const inspection of inspections) {
     controller.signal.throwIfAborted();
     try {
-      plans.push(await planExtraction(inspection, { out, base, conflict: options.onConflict ?? 'error', allowUnknownVendor: options.allowUnknownVendor, saveExtra: options.saveExtra, dryRun: options.dryRun, signal: controller.signal }, reserved));
+      plans.push(await planExtraction(inspection, { out, base, conflict: options.onConflict ?? 'error', allowUnknownVendor: options.allowUnknownVendor, saveExtra: options.saveExtra, videoCompat: options.videoCompat, dryRun: options.dryRun, signal: controller.signal }, reserved));
     } catch (e) {
       if (controller.signal.aborted) throw e;
       plans.push({ input: inspection.input, status: 'failed', code: e instanceof PhotoError ? e.code : (e as NodeJS.ErrnoException).code ?? 'PLAN_ERROR', reason: e instanceof Error ? e.message : String(e) });
@@ -150,6 +150,7 @@ common(program.command('extract').description('保留原文件，拆分静态 JP
   .option('-o, --out <dir>', '输出目录', './oppo-live-output')
   .addOption(new Option('--on-conflict <strategy>', '冲突策略').choices(['error', 'skip', 'rename']).default('error'))
   .option('--allow-unknown-vendor', '兼容旧版参数；有效实况已默认允许提取')
+  .addOption(new Option('--video-compat <mode>', '视频输出：original 保留原视频；apple 安全调整 HEVC 封装，不转码').choices(['original', 'apple']).default('original'))
   .option('--save-extra', '另存 Oplus 附加数据为同名 .extra.bin')
   .option('--dry-run', '仅生成提取计划，不写文件')
   .action((input, _options, command) => run('extract', input, command.optsWithGlobals()));
