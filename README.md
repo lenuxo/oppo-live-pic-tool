@@ -1,28 +1,30 @@
 # OPPO Live
 
-Node.js CLI：检查 OPPO/Oplus JPEG 实况照片，无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.3.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
+English | [简体中文](README.zh-CN.md)
 
-## 本地运行
+A Node.js CLI for inspecting OPPO/Oplus JPEG motion photos and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.3.0. See the [iteration plan](ITERATION.md) for planned improvements.
 
-需要 Node.js 22 或更新版本。源码托管于 [GitHub](https://github.com/lenuxo/oppo-live-pic-tool)。测试原图是私有样本，不随仓库发布；缺少样本时相关测试自动跳过，配置方式见 [样本说明](test/test-img/README.md)。
+## Getting started
+
+Requires Node.js 22 or later. Source code is available on [GitHub](https://github.com/lenuxo/oppo-live-pic-tool).
 
 ```bash
 npm install
 npm run build
 
-# 交互式引导（在终端中运行）
+# Start the interactive guide in a terminal
 npm run dev
 
-# 检查准备好的三张样本
-npm run dev -- inspect test/test-img
+# Inspect a directory
+npm run dev -- inspect ./photos
 
-# 拆分；默认保留原文件、禁止覆盖
-npm run dev -- extract test/test-img --out ./output
+# Extract without modifying originals or overwriting files
+npm run dev -- extract ./photos --out ./output
 ```
 
-编译后可直接运行 `node dist/cli.js`。安装 npm 包后，命令名为 `oppo-live`。当前项目尚未发布到 npm，包名是否可用需在发布前确认。
+After building, run `node dist/cli.js` directly. The installed package exposes the `oppo-live` command. The package has not yet been published to npm; package name availability must be checked before publishing.
 
-## 命令
+## Commands
 
 ```bash
 oppo-live inspect ./photos --recursive
@@ -33,55 +35,48 @@ oppo-live extract ./photos --out ./output --on-conflict rename
 oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 ```
 
-| 参数 | 说明 |
+| Option | Description |
 | --- | --- |
-| `-r, --recursive` | 扫描子目录；不跟随符号链接 |
-| `-o, --out <dir>` | 输出目录，默认 `./oppo-live-output`，仅 extract |
-| `--on-conflict error\|skip\|rename` | 默认 error；rename 为 JPG/MP4/可选附加数据使用相同编号 |
-| `--dry-run` | 预演，不创建目录或写入文件，仅 extract |
-| `--recover` | 元数据定位失败或缺失时，分块搜索并验证尾部 MP4 |
-| `--allow-unknown-vendor` | 允许无 OPPO/Oplus 来源证据的实况图，仅 extract |
-| `--jobs <n>` | 并发 1–32，默认 4 |
-| `--save-extra` | 将 Oplus 主视频后的附加内容逐字节另存为同名 `.extra.bin`，仅 extract |
-| `--report <file>` | 保存版本化 JSON 报告；已有报告不覆盖；dry-run 不写报告 |
-| `--json` | stdout 输出完整 JSON；不显示交互或动画 |
-| `--no-color` | 禁用颜色，也支持 `NO_COLOR` |
+| `-r, --recursive` | Scan subdirectories without following symbolic links |
+| `-o, --out <dir>` | Output directory; defaults to `./oppo-live-output`; extract only |
+| `--on-conflict error\|skip\|rename` | Defaults to error; rename uses the same suffix for JPG, MP4, and optional extra data |
+| `--dry-run` | Preview without creating directories or writing files; extract only |
+| `--recover` | Search in chunks and validate a trailing MP4 when metadata is missing or cannot locate it |
+| `--allow-unknown-vendor` | Allow motion photos without OPPO/Oplus origin evidence; extract only |
+| `--jobs <n>` | Concurrency from 1 to 32; defaults to 4 |
+| `--save-extra` | Copy data following the Oplus primary video into a matching `.extra.bin` file; extract only |
+| `--report <file>` | Save a versioned JSON report; existing reports are never overwritten; dry-run does not write reports |
+| `--json` | Write the complete JSON result to stdout without interaction or animation |
+| `--no-color` | Disable colors; `NO_COLOR` is also supported |
 
-参数完整时直接执行；无参数且处于交互终端时启动引导。重定向、CI 和非交互终端使用普通文本。进度及诊断写入 stderr。
+Commands run directly when arguments are provided. Running without arguments in an interactive terminal starts the guide. Redirected output, CI, and non-interactive terminals use plain text. Progress and diagnostics go to stderr.
 
-扫描目录保留相对层级：`photos/trip/IMG.jpg` → `output/trip/IMG.jpg` + `output/trip/IMG.mp4`。自动排除输出目录。单文件输入按文件内容识别，目录扫描按常见图片扩展名筛选。
+Directory scanning preserves relative paths: `photos/trip/IMG.jpg` becomes `output/trip/IMG.jpg` and `output/trip/IMG.mp4`. The output directory is automatically excluded. Individual files are identified by content; directory scans filter common image extensions.
 
-普通照片、非目标来源和暂不支持的布局会跳过；损坏输入及输出冲突会报告失败，继续处理其他文件。退出码：0 完成，1 文件处理失败，2 参数错误，130 取消。取消时已完成的文件对保留，正在处理的任务会清理临时输出。
+Ordinary photos, photos from other vendors, and unsupported layouts are skipped. Corrupt inputs and output conflicts are reported as failures while other files continue processing. Exit codes: 0 for completion, 1 for file processing failures, 2 for invalid arguments, and 130 for cancellation. Cancellation preserves completed file pairs and cleans up outputs from active tasks.
 
-## 格式支持与已验证样本
+## Supported formats
 
-支持标准 XMP 容器目录中的主 JPEG、可选 GainMap JPEG、MotionPhoto MP4，以及样本中 Oplus v2 的 `VideoLength` 字段。按 XML 命名空间识别属性，不依赖固定前缀。支持普通 JPEG 和渐进 JPEG 的标记遍历。
+Supports standard XMP container directories containing a primary JPEG, an optional GainMap JPEG, and a MotionPhoto MP4, as well as the Oplus v2 `VideoLength` field. XML attributes are recognized by namespace rather than fixed prefixes. JPEG marker traversal supports baseline and progressive JPEGs.
 
-| 样本 | 实际结果 |
-| --- | --- |
-| `test/test-img/l1.jpg` | OPPO Find X9；HDR 实况。保留增益图，输出 4,649,170 字节主 MP4 |
-| `test/test-img/l2.jpg` | 无 EXIF 厂商，Oplus v2 / VESDK 格式；输出 655,847 字节 MP4 |
-| `test/test-img/s1.jpg` | 普通 HDR 静态图片；跳过 |
+When an Oplus container includes data after its primary MP4, extraction uses `VideoLength` to locate the structurally validated primary video. Extra data is omitted by default; `--save-extra` saves it byte-for-byte as `.extra.bin`. Reports include the ranges of the primary video and extra data. The original file is preserved. The meaning of proprietary extra data is not yet established.
 
-l1 的 XMP 视频条目为 6,755,707 字节，其中主 MP4 后有 2,106,537 字节附加数据，包含另一段 MP4 等内容。当前按 Oplus `VideoLength` 提取经过结构验证的主 MP4，默认不导出附加数据；使用 `--save-extra` 可另存为 `.extra.bin`，其字节与源文件尾部完全一致。报告会包含主视频和附加内容的范围，原文件完整保留。这些附加内容的业务含义尚未确定。
+Oplus v2 format compatibility and camera vendor identification are reported separately. A compatible file can be extracted without claiming that its camera vendor has been confirmed as OPPO.
 
-Oplus v2 格式兼容性与拍摄厂商分开报告：l2 可默认提取，但不会被宣称为已确认由 OPPO 手机拍摄。
+Still images are not re-encoded. JPEG compressed data, EXIF, and gain maps are retained. Google/Oplus motion fields and video directory entries are removed, HDR directory entries are preserved, and MP Index offsets are adjusted for metadata length changes. MP4 bytes are copied unchanged, preserving original audio, video, and timestamps.
 
-静态图不重新编码：保留 JPEG 压缩数据、EXIF 和增益图；清理 Google/Oplus 实况字段及视频目录条目，保留 HDR 目录，按元数据长度变化修正 MP Index。MP4 逐字节复制，保留原始音视频和时间戳。
+### Limitations
 
-### 当前限制
+- HEIC/AVIF, extended XMP, multiple standard XMP packets, nonzero container padding, and unknown multimedia layouts are not supported.
+- MP Index support is limited to a primary image or a primary image with one gain map. Incomplete MPF/XMP metadata is not repaired by guessing.
+- MP4 validation checks box ranges, moov, mdat, and a video track. It does not fully parse sample tables or decode video at runtime.
+- `--recover` is an explicit recovery feature and may miss variants with proprietary trailing data. An `ftyp` string alone is insufficient to identify a valid video.
+- There is no atomic transaction across files. Extraction uses temporary files, hard-link commits without overwriting, and rollback on errors. A crash or power loss may leave temporary files or a single committed output; these are not automatically deleted.
+- When hard links are unsupported, extraction falls back to exclusive creation and chunked copying. Other programs may see incomplete output during copying. Cancellation or failure attempts rollback. Output permissions default to 0600. Filesystem timestamps are not copied; EXIF capture information is retained.
 
-- HEIC/AVIF、扩展 XMP、多标准 XMP 数据包、非零容器填充、未知多媒体布局暂不支持。
-- 仅支持已验证的单主图或主图 + 单增益图 MP Index；不完整的 MPF/XMP 不猜测修复。
-- MP4 验证检查 box 范围、moov、mdat 和视频轨道，不完整解析样本表，也不进行运行时解码验证。
-- `--recover` 是显式恢复功能，可能找不到带私有尾部的变体；不会单凭 `ftyp` 字符串认定视频有效。
-- 无跨文件原子事务：使用临时文件、无覆盖的硬链接提交和异常回滚。进程崩溃或断电仍可能留下临时文件/单个已提交文件；不自动删除这些文件。
-- 优先通过硬链接无覆盖提交；当文件系统返回不支持硬链接的错误时，使用独占创建 + 分块复制回退。回退期间其他程序可能看到尚未复制完的输出文件，取消或失败会尝试回滚；已模拟验证回退路径，尚未在真实 exFAT/FAT 外置盘上验证。输出文件默认权限为 0600；不复制源文件的文件系统时间戳，照片 EXIF 拍摄信息保留。
+## AI and automation
 
-
-## AI / 自动化调用
-
-机器模式通过普通进程调用，无需 MCP：
+Machine mode works through ordinary process invocation and requires no MCP server:
 
 ```bash
 oppo-live capabilities --agent
@@ -90,29 +85,29 @@ oppo-live extract ./photos --out ./output --dry-run --agent
 oppo-live extract ./photos --out ./output --agent --report ./agent-report.json
 ```
 
-`--agent` 禁止交互、颜色和动画，stdout 仅包含一个 JSON 对象。无论成功、参数错误、路径错误、处理失败、报告写入失败、帮助/版本查询或可捕获的 SIGINT/SIGTERM 取消，都使用同一顶层契约。与 `--json` 同时传入时优先使用机器契约；旧 `--json` 保持原有报告格式。
+`--agent` disables interaction, colors, and animation. stdout contains exactly one JSON object. The same top-level contract applies to success, invalid arguments, path errors, processing failures, report write failures, help/version queries, and catchable SIGINT/SIGTERM cancellation. If combined with `--json`, the agent contract takes precedence. Existing `--json` behavior retains its original report format.
 
-固定字段：`schemaVersion: 1`、`protocol: "oppo-live.agent"`、`tool`、`requestId`（未指定为 null）、`command`、`status`、`summary`、`results`、`error`（成功为 null）。顶层状态为 `success / partial / failed / cancelled`。`summary.processed + summary.pending = summary.total`；检查数量单独记录为 `inspected`。能力查询和调用前错误没有文件结果，计数为 0。
+Fixed fields are `schemaVersion: 1`, `protocol: "oppo-live.agent"`, `tool`, `requestId` (null when omitted), `command`, `status`, `summary`, `results`, and `error` (null on success). Top-level status is `success / partial / failed / cancelled`. `summary.processed + summary.pending = summary.total`; inspection counts are recorded separately as `inspected`. Capability queries and errors before processing have no file results and zero counts.
 
-每个结果提供稳定的 `status`、`code` 和 `outputsCommitted`；AI 应依赖这些字段判断，不解析展示用的 `message`。普通照片为 `ORDINARY_PHOTO`，未知格式为 `UNSUPPORTED_FORMAT`，来源不符/未知分别为 `NON_OPPO_VENDOR / UNKNOWN_VENDOR`。普通跳过不使整批失败；全部处理失败为 `failed`，成功或跳过与失败混合为 `partial`。
+Each result includes stable `status`, `code`, and `outputsCommitted` fields. AI callers should use these fields rather than parsing the display-oriented `message`. Ordinary photos use `ORDINARY_PHOTO`, unsupported formats use `UNSUPPORTED_FORMAT`, and nonmatching or unknown vendors use `NON_OPPO_VENDOR / UNKNOWN_VENDOR`. Normal skips do not fail a batch. A batch where every processed file fails has status `failed`; a mix of failures and successful or skipped files has status `partial`.
 
-取消时保留已完成结果，并以 `PENDING` 列出未完成文件；尚未完成检查或提取的文件不要假定已经处理。清理失败时提供 `cleanupIssues` 路径，应检查残留输出再重试。无法捕获的强制终止（如 SIGKILL）不保证有响应。
+Cancellation preserves completed results and lists unfinished files as `PENDING`. Do not assume those files have been inspected or extracted. Cleanup failures include residual paths in `cleanupIssues`; inspect them before retrying. Uncatchable termination such as SIGKILL cannot guarantee a response.
 
-退出码仍为 0 完成、1 部分或全部处理失败、2 调用参数错误、130 取消。AI 即使收到非零退出码，也应尝试解析 stdout。`--report` 在机器模式下保存相同的机器响应；dry-run 不写报告。报告已有文件时不会覆盖。
+Exit codes remain 0 for completion, 1 for partial or total processing failure, 2 for invalid invocation arguments, and 130 for cancellation. AI callers should attempt to parse stdout even after a nonzero exit code. In agent mode, `--report` saves the same machine response. Dry-run does not write reports, and existing reports are never overwritten.
 
-`capabilities` 描述命令、参数、默认值、格式支持范围、写文件行为与错误处理建议。`--request-id` 在成功或错误响应中原样返回。第一版不支持 stdin JSON 或 JSONL；请使用 argv 参数数组调用，避免拼接 shell 命令。
+`capabilities` describes commands, options, defaults, supported formats, file-writing behavior, and error-handling guidance. `--request-id` is echoed unchanged in success and error responses. This version does not accept stdin JSON or JSONL. Invoke the process with an argv array instead of constructing shell command strings.
 
-## 报告与异常处理
+## Reports and error handling
 
-`--json` 和 `--report` 使用相同结构：`schemaVersion: 1`、工具版本、生成时间、命令、汇总和逐文件结果。提取报告还包含来源证据、主视频/附加数据范围和警告，不包含内部补丁 Buffer 或文件指纹。
+`--json` and `--report` share a structure containing `schemaVersion: 1`, tool version, generation time, command, summary, and per-file results. Extraction reports also include origin evidence, primary video and extra-data ranges, and warnings. Internal patch buffers and file fingerprints are excluded.
 
-报告保存采用无覆盖提交。已有报告会在开始处理前报错；执行期间发生报告写入失败时，照片处理结果保留，JSON 报告仍作为一个完整对象输出，并包含 `error` 与 `reportFile.status: "failed"`，退出码为 1。dry-run 不创建报告或输出目录，可用 shell 重定向保存 JSON。
+Reports are committed without overwriting. An existing report causes an error before processing begins. If report writing fails during execution, photo processing results are retained, and a complete JSON object is still emitted with `error` and `reportFile.status: "failed"`; the exit code is 1. Dry-run creates neither reports nor output directories. Shell redirection can save its JSON output.
 
-清理会继续尝试所有本次创建的文件。若有文件无法清理，逐文件结果包含 `CLEANUP_FAILED`、`cleanupIssues` 残留路径；若照片已经提交，`outputsCommitted: true` 会明确说明。不会删除已被其他文件替换的路径。取消时如清理失败，会直接提示残留路径。
+Cleanup attempts every file created by the current operation. If cleanup fails, per-file results include `CLEANUP_FAILED` and residual paths in `cleanupIssues`. `outputsCommitted: true` explicitly indicates when photo outputs have already been committed. Paths replaced by other files are not deleted. Cancellation also reports residual paths when cleanup fails.
 
-报告不是断点续跑清单；再次执行仍遵循显式冲突策略，不凭文件存在判断此前是否正确处理。
+Reports are not resume manifests. Subsequent runs follow the explicit conflict policy rather than assuming an existing file was processed correctly.
 
-## 验证
+## Development
 
 ```bash
 npm run check
@@ -121,11 +116,9 @@ npm run build
 npm pack --dry-run
 ```
 
-测试覆盖真实样本识别、视频/附加数据字节一致性、EXIF/增益图保留、MP Index 修正、XMP 属性/元素写法、伪 JPEG、恢复扫描、损坏输入、源文件变化、覆盖竞争回滚、复制回退、磁盘写入失败、清理失败、取消、目录遍历、JSON、报告保存和 dry-run。
+Private image fixtures are excluded from Git and the npm package. Tests that require them are skipped when fixtures are unavailable. See the [fixture setup guide](test/test-img/README.md).
 
-开发时另用本机 FFprobe/FFmpeg 检查两段输出视频和两张输出静态图；CLI 不依赖它们。视频可解码，样本的原始时间戳在 FFmpeg null 输出检查中存在 DTS 提示，本工具保留源时间戳，不修复或转码。
-
-## 程序接口
+## Programmatic API
 
 ```ts
 import { inspectFile, planExtraction, executeExtraction } from 'oppo-live-pic-tool';
@@ -145,6 +138,6 @@ if ('inspection' in plan) {
 }
 ```
 
-核心模块不依赖终端 UI。`src/formats` 处理 JPEG/XMP/MPF/MP4，`src/core` 处理检查和提取，`src/io` 处理范围读取和扫描，`src/ui` 管理交互与报告。扫描采用固定大小缓存，提取按 64 KiB 分块，不整体载入照片或视频。
+Core modules do not depend on terminal UI. `src/formats` handles JPEG/XMP/MPF/MP4, `src/core` handles inspection and extraction, `src/io` handles range reads and scanning, and `src/ui` manages interaction and reports. Scanning uses fixed-size buffers, and extraction copies data in 64 KiB chunks without loading entire photos or videos into memory.
 
-npm 包只包含编译产物与说明文件，不包含测试原图。发布前请检查包名、版本、许可和公开内容；尚未执行 npm 发布。
+The npm package contains compiled output and documentation, excluding private image fixtures. Review the package name, version, licensing, and public contents before publishing. No npm release has been published yet.
