@@ -1,0 +1,36 @@
+# Dependencies and generated builds
+node_modules/
+dist/
+*.tgz
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+# Local outputs and reports
+oppo-live-output/
+output/
+report.json
+agent-report.json
+*.report.json
+.oppo-live-*.tmp
+
+# Private source photos: preserve the fixture instructions only
+test/test-img/*
+!test/test-img/README.md
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.codex/
+.agents/
+.aws/
+
+# Editor, OS and debug files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
