@@ -1,5 +1,7 @@
 # OPPO Live
 
+[![npm version](https://img.shields.io/npm/v/oppo-live-pic-tool?logo=npm)](https://www.npmjs.com/package/oppo-live-pic-tool)
+
 English | [简体中文](README.zh-CN.md)
 
 A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.4.0. See the [iteration plan](ITERATION.md) for planned improvements.

@@ -1,5 +1,7 @@
 # OPPO Live
 
+[![npm version](https://img.shields.io/npm/v/oppo-live-pic-tool?logo=npm)](https://www.npmjs.com/package/oppo-live-pic-tool)
+
 [English](README.md) | 简体中文
 
 Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.4.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
