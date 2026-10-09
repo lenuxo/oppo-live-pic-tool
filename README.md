@@ -4,7 +4,20 @@ English | [简体中文](README.zh-CN.md)
 
 A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.4.0. See the [iteration plan](ITERATION.md) for planned improvements.
 
-## Getting started
+## Installation
+
+Requires Node.js 22 or later. Available on [npm](https://www.npmjs.com/package/oppo-live-pic-tool).
+
+```bash
+npm install -g oppo-live-pic-tool
+oppo-live inspect ./photos
+oppo-live extract ./photos --out ./output
+
+# Run without a global installation
+npx oppo-live-pic-tool inspect ./photos
+```
+
+## Run from source
 
 Requires Node.js 22 or later. Source code is available on [GitHub](https://github.com/lenuxo/oppo-live-pic-tool).
 
@@ -22,7 +35,7 @@ npm run dev -- inspect ./photos
 npm run dev -- extract ./photos --out ./output
 ```
 
-After building, run `node dist/cli.js` directly. The installed package exposes the `oppo-live` command. The package has not yet been published to npm; package name availability must be checked before publishing.
+After building, run `node dist/cli.js` directly. The installed package exposes the `oppo-live` command.
 
 ## Commands
 
@@ -144,4 +157,4 @@ if ('inspection' in plan) {
 
 Core modules do not depend on terminal UI. `src/formats` handles JPEG/XMP/MPF/MP4, `src/core` handles inspection and extraction, `src/io` handles range reads and scanning, and `src/ui` manages interaction and reports. Scanning uses fixed-size buffers, and extraction copies data in 64 KiB chunks without loading entire photos or videos into memory.
 
-The npm package contains compiled output and documentation, excluding private image fixtures. Review the package name, version, licensing, and public contents before publishing. No npm release has been published yet.
+The npm package contains compiled output and documentation, excluding private image fixtures.

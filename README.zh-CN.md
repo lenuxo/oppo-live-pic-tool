@@ -4,7 +4,20 @@
 
 Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.4.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
 
-## 本地运行
+## 安装
+
+需要 Node.js 22 或更新版本。项目已发布到 [npm](https://www.npmjs.com/package/oppo-live-pic-tool)。
+
+```bash
+npm install -g oppo-live-pic-tool
+oppo-live inspect ./photos
+oppo-live extract ./photos --out ./output
+
+# 无需全局安装，直接运行
+npx oppo-live-pic-tool inspect ./photos
+```
+
+## 源码运行
 
 需要 Node.js 22 或更新版本。源码托管于 [GitHub](https://github.com/lenuxo/oppo-live-pic-tool)。
 
@@ -22,7 +35,7 @@ npm run dev -- inspect ./photos
 npm run dev -- extract ./photos --out ./output
 ```
 
-编译后可直接运行 `node dist/cli.js`。安装 npm 包后，命令名为 `oppo-live`。当前项目尚未发布到 npm，包名是否可用需在发布前确认。
+编译后可直接运行 `node dist/cli.js`。安装 npm 包后，命令名为 `oppo-live`。
 
 ## 命令
 
@@ -145,4 +158,4 @@ if ('inspection' in plan) {
 
 核心模块不依赖终端 UI。`src/formats` 处理 JPEG/XMP/MPF/MP4，`src/core` 处理检查和提取，`src/io` 处理范围读取和扫描，`src/ui` 管理交互与报告。扫描采用固定大小缓存，提取按 64 KiB 分块，不整体载入照片或视频。
 
-npm 包只包含编译产物与说明文件，不包含测试原图。发布前请检查包名、版本、许可和公开内容；尚未执行 npm 发布。
+npm 包只包含编译产物与说明文件，不包含测试原图。
