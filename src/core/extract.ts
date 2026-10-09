@@ -15,7 +15,6 @@ export async function planExtraction(inspection: Inspection, options: ExtractOpt
   const input = inspection.input;
   if (inspection.error && inspection.motion.status === 'invalid') return { input, status: 'failed', reason: inspection.error.message, code: inspection.error.code };
   if (inspection.motion.status !== 'valid' || !inspection.layout) return { input, status: 'skipped', reason: inspection.error?.message ?? (inspection.motion.status === 'absent' ? '普通照片' : '暂不支持此格式'), code: inspection.error?.code ?? (inspection.motion.status === 'absent' ? 'ORDINARY_PHOTO' : 'UNSUPPORTED_FORMAT') };
-  if (inspection.vendor.value === 'other' || (inspection.vendor.value === 'unknown' && !inspection.profile && !options.allowUnknownVendor)) return { input, status: 'skipped', reason: inspection.vendor.value === 'other' ? '非 OPPO 来源' : '来源未知，使用 --allow-unknown-vendor 可提取', code: inspection.vendor.value === 'other' ? 'NON_OPPO_VENDOR' : 'UNKNOWN_VENDOR' };
   const root = resolve(options.out), base = resolve(options.base);
   if (!inside(base, input)) throw new PhotoError('INVALID_INPUT', '输入文件不在扫描根目录内');
   const rel = relative(base, input), target = resolve(root, rel);

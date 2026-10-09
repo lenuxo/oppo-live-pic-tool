@@ -135,7 +135,7 @@ async function persistAgent(options: RunOptions) {
     process.exitCode = 1;
   }
 }
-const program = new Command().name('oppo-live').description('检查 OPPO/Oplus JPEG 实况照片，无损拆分为 JPG + MP4').version(VERSION).option('--agent', '机器模式：统一 JSON 响应，禁止交互').option('--request-id <id>', '原样返回调用方请求标识').exitOverride();
+const program = new Command().name('oppo-live').description('检查兼容的 JPEG 实况照片，无损拆分为 JPG + MP4').version(VERSION).option('--agent', '机器模式：统一 JSON 响应，禁止交互').option('--request-id <id>', '原样返回调用方请求标识').exitOverride();
 program.configureOutput({ writeOut: text => { if (machine) information += text; else process.stdout.write(text); }, outputError: (message, write) => { if (!machine && !process.argv.includes('--json')) write(message); } });
 function common(command: Command) {
   return command.argument('<input>', '图片文件或目录').option('-r, --recursive', '递归扫描子目录')
@@ -149,7 +149,7 @@ common(program.command('inspect').description('检查实况结构，不写入文
 common(program.command('extract').description('保留原文件，拆分静态 JPG 和原始 MP4'))
   .option('-o, --out <dir>', '输出目录', './oppo-live-output')
   .addOption(new Option('--on-conflict <strategy>', '冲突策略').choices(['error', 'skip', 'rename']).default('error'))
-  .option('--allow-unknown-vendor', '允许提取无 OPPO/Oplus 来源证据的实况照片')
+  .option('--allow-unknown-vendor', '兼容旧版参数；有效实况已默认允许提取')
   .option('--save-extra', '另存 Oplus 附加数据为同名 .extra.bin')
   .option('--dry-run', '仅生成提取计划，不写文件')
   .action((input, _options, command) => run('extract', input, command.optsWithGlobals()));

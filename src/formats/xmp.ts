@@ -11,7 +11,7 @@ const ITEM = 'http://ns.google.com/photos/1.0/container/item/';
 type Node = { [key: string]: unknown };
 type NS = Record<string, string>;
 interface Item { Mime?: string; Semantic?: string; Length?: string; Padding?: string }
-export interface Xmp { items: Item[]; hasMotion: boolean; patches: Patch[]; extended: boolean; oplusVersion?: string; oplusVideoLength?: string; oplusOwner?: string }
+export interface Xmp { items: Item[]; hasMotion: boolean; patches: Patch[]; extended: boolean; microVideoOffset?: string; microVideo?: boolean; oplusVersion?: string; oplusVideoLength?: string; oplusOwner?: string }
 function namespace(attrs: Record<string, string>, inherited: NS): NS {
   const ns = { ...inherited };
   for (const [key, value] of Object.entries(attrs)) {
@@ -45,6 +45,11 @@ export function parseXmp(segments: Segment[]): Xmp {
       if (uri === CAMERA && ['MotionPhoto', 'MicroVideo'].includes(local)) {
         if (!['0', '1'].includes(value)) throw new PhotoError('INVALID_XMP_FLAG', '实况开关必须为 0 或 1');
         if (value === '1') result.hasMotion = true;
+      }
+      if (uri === CAMERA && local === 'MicroVideo') result.microVideo = value === '1';
+      if (uri === CAMERA && local === 'MicroVideoOffset') {
+        if (result.microVideoOffset !== undefined && result.microVideoOffset !== value) throw new PhotoError('INVALID_XMP', '重复的 MicroVideoOffset 值不一致');
+        result.microVideoOffset = value;
       }
       if (uri === OPLUS) {
         const field = { OLivePhotoVersion: 'oplusVersion', VideoLength: 'oplusVideoLength', MotionPhotoOwner: 'oplusOwner' }[local] as 'oplusVersion' | 'oplusVideoLength' | 'oplusOwner' | undefined;

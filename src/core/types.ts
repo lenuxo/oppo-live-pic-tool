@@ -4,7 +4,7 @@ export interface Inspection {
   input: string;
   format: 'jpeg' | 'unsupported';
   vendor: { value: 'oppo' | 'other' | 'unknown'; evidence: string[] };
-  motion: { status: 'valid' | 'absent' | 'invalid' | 'unsupported'; method?: 'xmp-directory' | 'recovery-scan'; video?: Range; extra?: Range };
+  motion: { status: 'valid' | 'absent' | 'invalid' | 'unsupported'; method?: 'xmp-directory' | 'microvideo-offset' | 'recovery-scan'; video?: Range; extra?: Range };
   profile?: 'oplus-v2';
   warnings: string[];
   error?: { code: string; message: string };
@@ -13,6 +13,7 @@ export interface Inspection {
 }
 export interface ExtractOptions {
   out: string; base: string; conflict: 'error' | 'skip' | 'rename';
+  /** Deprecated compatibility option; valid layouts are accepted regardless of vendor. */
   allowUnknownVendor?: boolean; saveExtra?: boolean; dryRun?: boolean; signal?: AbortSignal;
 }
 export interface ExtractionResult {

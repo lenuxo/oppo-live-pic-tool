@@ -22,6 +22,10 @@ test('能力发现、全局 flag 前后位置、请求标识和无动画', () =>
   for (const args of [['capabilities', '--agent', '--request-id', 'req-001'], ['--agent', '--request-id=req-001', 'capabilities']]) {
     const run = cli(args), data = response(run); assert.equal(run.status, 0); assert.equal(data.status, 'success'); assert.equal(data.requestId, 'req-001');
     assert.equal(data.capabilities.optionSchema['--jobs'].type, 'integer');
+    assert.equal(data.capabilities.defaults.vendorPolicy, 'any-validated-layout');
+    assert.equal(data.capabilities.optionSchema['--allow-unknown-vendor'].deprecated, true);
+    assert.ok(data.capabilities.formats.supported.includes('JPEG MicroVideoOffset'));
+    assert.ok(!data.capabilities.reasonCodes.includes('UNKNOWN_VENDOR'));
     assert.ok(data.capabilities.responseSchema.requiredFields.includes('error'));
     assert.equal(data.capabilities.transport.interactive, false); assert.equal(data.capabilities.defaults.overwrite, false);
   }

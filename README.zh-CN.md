@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-Node.js CLI：检查 OPPO/Oplus JPEG 实况照片，无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.3.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
+Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.4.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
 
 ## 本地运行
 
@@ -42,7 +42,7 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 | `--on-conflict error\|skip\|rename` | 默认 error；rename 为 JPG/MP4/可选附加数据使用相同编号 |
 | `--dry-run` | 预演，不创建目录或写入文件，仅 extract |
 | `--recover` | 元数据定位失败或缺失时，分块搜索并验证尾部 MP4 |
-| `--allow-unknown-vendor` | 允许无 OPPO/Oplus 来源证据的实况图，仅 extract |
+| `--allow-unknown-vendor` | 旧版兼容参数；有效实况已默认允许提取，不限制厂商 |
 | `--jobs <n>` | 并发 1–32，默认 4 |
 | `--save-extra` | 将 Oplus 主视频后的附加内容逐字节另存为同名 `.extra.bin`，仅 extract |
 | `--report <file>` | 保存版本化 JSON 报告；已有报告不覆盖；dry-run 不写报告 |
@@ -53,7 +53,9 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 
 扫描目录保留相对层级：`photos/trip/IMG.jpg` → `output/trip/IMG.jpg` + `output/trip/IMG.mp4`。自动排除输出目录。单文件输入按文件内容识别，目录扫描按常见图片扩展名筛选。
 
-普通照片、非目标来源和暂不支持的布局会跳过；损坏输入及输出冲突会报告失败，继续处理其他文件。退出码：0 完成，1 文件处理失败，2 参数错误，130 取消。取消时已完成的文件对保留，正在处理的任务会清理临时输出。
+普通照片和暂不支持的布局会跳过；通过结构验证的实况默认允许提取，不限制厂商；损坏输入及输出冲突会报告失败，继续处理其他文件。退出码：0 完成，1 文件处理失败，2 参数错误，130 取消。取消时已完成的文件对保留，正在处理的任务会清理临时输出。
+
+检查结束后，输出简洁统计概览和文件结果面板，展示是否实况、视频格式和大小，检查失败时显示原因。需要机器可读结果时使用 `--json` 或 `--agent`。
 
 ## 格式支持
 
@@ -61,13 +63,15 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 
 Oplus 容器在主 MP4 后可能包含附加数据。工具按 `VideoLength` 提取经过结构验证的主 MP4，默认不导出附加数据；使用 `--save-extra` 可逐字节另存为 `.extra.bin`。报告包含主视频和附加内容的范围，原文件完整保留。这些私有附加内容的业务含义尚未确定。
 
+支持旧版 JPEG MicroVideo 的 `MicroVideo="1"` 和 `MicroVideoOffset`（从文件尾倒数定位）。视频范围必须位于 JPEG 之后，并通过 MP4 结构验证。标准容器目录优先于旧版偏移。无增益图时支持主 JPEG 与 MP4 之间的主图填充，提取静态图时移除填充。
+
 Oplus v2 格式兼容性与拍摄厂商分开报告：兼容文件可以提取，但不会据此宣称已确认由 OPPO 手机拍摄。
 
 静态图不重新编码：保留 JPEG 压缩数据、EXIF 和增益图；清理 Google/Oplus 实况字段及视频目录条目，保留 HDR 目录，按元数据长度变化修正 MP Index。MP4 逐字节复制，保留原始音视频和时间戳。
 
 ### 当前限制
 
-- HEIC/AVIF、扩展 XMP、多标准 XMP 数据包、非零容器填充、未知多媒体布局暂不支持。
+- HEIC/AVIF、扩展 XMP、多标准 XMP 数据包、带填充的增益图布局及次级条目填充、未知多媒体布局暂不支持。
 - 仅支持单主图或主图 + 单增益图 MP Index；不完整的 MPF/XMP 不猜测修复。
 - MP4 验证检查 box 范围、moov、mdat 和视频轨道，不完整解析样本表，也不进行运行时解码验证。
 - `--recover` 是显式恢复功能，可能找不到带私有尾部的变体；不会单凭 `ftyp` 字符串认定视频有效。
@@ -90,7 +94,7 @@ oppo-live extract ./photos --out ./output --agent --report ./agent-report.json
 
 固定字段：`schemaVersion: 1`、`protocol: "oppo-live.agent"`、`tool`、`requestId`（未指定为 null）、`command`、`status`、`summary`、`results`、`error`（成功为 null）。顶层状态为 `success / partial / failed / cancelled`。`summary.processed + summary.pending = summary.total`；检查数量单独记录为 `inspected`。能力查询和调用前错误没有文件结果，计数为 0。
 
-每个结果提供稳定的 `status`、`code` 和 `outputsCommitted`；AI 应依赖这些字段判断，不解析展示用的 `message`。普通照片为 `ORDINARY_PHOTO`，未知格式为 `UNSUPPORTED_FORMAT`，来源不符/未知分别为 `NON_OPPO_VENDOR / UNKNOWN_VENDOR`。普通跳过不使整批失败；全部处理失败为 `failed`，成功或跳过与失败混合为 `partial`。
+每个结果提供稳定的 `status`、`code` 和 `outputsCommitted`；AI 应依赖这些字段判断，不解析展示用的 `message`。普通照片为 `ORDINARY_PHOTO`，未知格式为 `UNSUPPORTED_FORMAT`；来源证据仅供参考，不阻止提取。普通跳过不使整批失败；全部处理失败为 `failed`，成功或跳过与失败混合为 `partial`。
 
 取消时保留已完成结果，并以 `PENDING` 列出未完成文件；尚未完成检查或提取的文件不要假定已经处理。清理失败时提供 `cleanupIssues` 路径，应检查残留输出再重试。无法捕获的强制终止（如 SIGKILL）不保证有响应。
 

@@ -32,7 +32,10 @@ export async function inspectFile(input: string, options: { recover?: boolean; s
     if (xmp.items.length) {
       if (primary?.Mime !== 'image/jpeg' || primary.Semantic !== 'Primary' || secondary.some(i => !((i.Semantic === 'GainMap' && i.Mime === 'image/jpeg') || (i.Semantic === 'MotionPhoto' && i.Mime === 'video/mp4'))) || secondary.length > 2 || (secondary.length === 2 && secondary[0] !== gain)) throw new PhotoError('UNSUPPORTED_LAYOUT', '不支持此 XMP 容器条目布局');
       if (secondary.filter(i => i.Semantic === 'GainMap').length > 1 || secondary.filter(i => i.Semantic === 'MotionPhoto').length > 1) throw new PhotoError('UNSUPPORTED_LAYOUT', '重复的容器条目');
-      if (integer(primary.Length, 0) !== 0 || integer(primary.Padding, 0) !== 0 || secondary.some(i => integer(i.Padding, 0) !== 0)) throw new PhotoError('UNSUPPORTED_LAYOUT', '带填充的容器布局暂不支持');
+      if (integer(primary.Length, 0) !== 0 || secondary.some(i => integer(i.Padding, 0) !== 0)) throw new PhotoError('UNSUPPORTED_LAYOUT', '不支持主图长度或次级条目填充');
+      const padding = integer(primary.Padding, 0);
+      if (padding > r.size - jpeg.end) throw new PhotoError('INVALID_VIDEO_RANGE', '容器填充超出文件边界');
+      if (gain && padding) throw new PhotoError('UNSUPPORTED_LAYOUT', '带填充的增益图布局暂不支持');
       if (gain) {
         const gainLength = integer(gain.Length);
         const gainJpeg = await parseJpeg(r, jpeg.end);
@@ -42,13 +45,13 @@ export async function inspectFile(input: string, options: { recover?: boolean; s
       if (videoItem) {
         const declaredLength = integer(videoItem.Length);
         const videoLength = result.profile && xmp.oplusVideoLength ? integer(xmp.oplusVideoLength) : declaredLength;
-        range = { offset: imageEnd, length: videoLength };
+        range = { offset: imageEnd + padding, length: videoLength };
         try {
-          if (videoLength <= 0 || videoLength > declaredLength || imageEnd + declaredLength !== r.size) throw new PhotoError('INVALID_VIDEO_RANGE', 'XMP 视频范围与文件边界不一致');
+          if (videoLength <= 0 || videoLength > declaredLength || range.offset + declaredLength !== r.size) throw new PhotoError('INVALID_VIDEO_RANGE', 'XMP 视频范围与文件边界不一致');
           await validateMp4(r, range);
           result.motion.method = 'xmp-directory';
           if (videoLength < declaredLength) {
-            result.motion.extra = { offset: imageEnd + videoLength, length: declaredLength - videoLength };
+            result.motion.extra = { offset: range.offset + videoLength, length: declaredLength - videoLength };
             result.warnings.push(`主 MP4 后有 ${declaredLength - videoLength} 字节 Oplus 附加数据；可用 --save-extra 单独保存，原文件保留`);
           }
         } catch (e) {
@@ -57,6 +60,21 @@ export async function inspectFile(input: string, options: { recover?: boolean; s
         }
       }
     } else if (jpeg.hasMpf && r.size !== jpeg.end) throw new PhotoError('UNSUPPORTED_LAYOUT', '无容器目录的多图 MPF 图片暂不支持拆分');
+    // Container directories take precedence over obsolete offset fields.
+    if (!xmp.items.length && xmp.microVideo && xmp.microVideoOffset !== undefined) {
+      try {
+        const length = integer(xmp.microVideoOffset);
+        const offset = r.size - length;
+        if (!length || offset < imageEnd) throw new PhotoError('INVALID_VIDEO_RANGE', 'MicroVideoOffset 与图片或文件边界不一致');
+        range = { offset, length };
+        await validateMp4(r, range);
+        result.motion.method = 'microvideo-offset';
+      } catch (e) {
+        if (!options.recover) throw e;
+        range = undefined;
+        result.warnings.push('旧版偏移定位失败，尝试从图片尾部恢复');
+      }
+    }
     if (!range && options.recover && r.size > imageEnd) {
       range = await recoverMp4(r, imageEnd, options.signal);
       if (range) { result.motion.method = 'recovery-scan'; result.warnings.push('视频通过恢复搜索定位，未经 XMP 范围确认'); }

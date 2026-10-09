@@ -1,7 +1,7 @@
 {
   "name": "oppo-live-pic-tool",
-  "version": "0.3.0",
-  "description": "Inspect and losslessly split OPPO JPEG motion photos",
+  "version": "0.4.0",
+  "description": "Inspect and losslessly split compatible JPEG motion photos",
   "type": "module",
   "bin": {
     "oppo-live": "dist/cli.js"

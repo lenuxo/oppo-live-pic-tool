@@ -32,7 +32,7 @@ export function capabilities() {
       '--jobs': { type: 'integer', default: 4, minimum: 1, maximum: 32 },
       '--out': { type: 'path', default: './oppo-live-output' }, '--report': { type: 'path', overwrite: false },
       '--on-conflict': { type: 'enum', values: ['error', 'skip', 'rename'], default: 'error' },
-      '--allow-unknown-vendor': { type: 'boolean', default: false }, '--save-extra': { type: 'boolean', default: false },
+      '--allow-unknown-vendor': { type: 'boolean', default: false, deprecated: true, effect: 'none; validated layouts are accepted regardless of vendor' }, '--save-extra': { type: 'boolean', default: false },
       '--dry-run': { type: 'boolean', default: false },
     },
     responseSchema: {
@@ -42,15 +42,14 @@ export function capabilities() {
       error: 'null or {code, message, optional cleanupIssues}',
       outputPaths: 'absolute paths; pending means not completed, not safe to blindly retry',
     },
-    defaults: { preserveSource: true, overwrite: false, jobs: 4, out: './oppo-live-output', onConflict: 'error', saveExtra: false },
+    defaults: { preserveSource: true, overwrite: false, jobs: 4, out: './oppo-live-output', onConflict: 'error', saveExtra: false, vendorPolicy: 'any-validated-layout' },
     constraints: { jobs: { minimum: 1, maximum: 32 }, onConflict: ['error', 'skip', 'rename'], followsSymlinks: false },
-    formats: { supported: ['JPEG', 'JPEG + HDR GainMap', 'Oplus v2 MotionPhoto'], verifiedSamples: ['OPPO Find X9 HDR', 'Oplus v2 VESDK'], unsupported: ['HEIC', 'AVIF', 'extended XMP', 'unknown multi-media layouts'] },
+    formats: { supported: ['JPEG XMP MotionPhoto', 'JPEG MicroVideoOffset', 'JPEG + HDR GainMap', 'Oplus v2 MotionPhoto', 'JPEG primary padding (without GainMap)'], verifiedSamples: ['OPPO Find X9 HDR', 'Oplus v2 VESDK'], unsupported: ['HEIC', 'AVIF', 'extended XMP', 'padded GainMap layouts', 'unknown multi-media layouts'] },
     statuses: ['success', 'partial', 'failed', 'cancelled'],
     exitCodes: { '0': 'success (may include skipped files)', '1': 'partial or failed processing', '2': 'invalid invocation', '130': 'cancelled' },
-    reasonCodes: ['ORDINARY_PHOTO', 'UNSUPPORTED_FORMAT', 'UNSUPPORTED_LAYOUT', 'NON_OPPO_VENDOR', 'UNKNOWN_VENDOR', 'OUTPUT_CONFLICT', 'PENDING'],
+    reasonCodes: ['ORDINARY_PHOTO', 'UNSUPPORTED_FORMAT', 'UNSUPPORTED_LAYOUT', 'OUTPUT_CONFLICT', 'PENDING'],
     errorGuidance: {
       OUTPUT_CONFLICT: { suggestedOptions: ['--on-conflict skip', '--on-conflict rename'], automaticRetry: false },
-      UNKNOWN_VENDOR: { suggestedOptions: ['--allow-unknown-vendor'], automaticRetry: false },
       INVALID_MOTION_METADATA: { suggestedOptions: ['--recover'], automaticRetry: false },
       CLEANUP_FAILED: { action: 'inspect cleanupIssues and existing outputs before retry', automaticRetry: false },
       REPORT_CONFLICT: { action: 'choose a new report path', automaticRetry: false },
@@ -70,7 +69,7 @@ export function extractionCode(r: ExtractionResult, i?: Inspection): string {
   if (r.status !== 'skipped') return { extracted: 'EXTRACTED', planned: 'PLANNED', failed: 'EXTRACTION_FAILED' }[r.status];
   if (!i) return 'SKIPPED';
   if (i.motion.status !== 'valid') return inspectionCode(i);
-  return i.vendor.value === 'other' ? 'NON_OPPO_VENDOR' : 'UNKNOWN_VENDOR';
+  return 'SKIPPED';
 }
 export function populateAgent(response: AgentResponse, inspections: Inspection[], results?: ExtractionResult[], files: string[] = inspections.map(i => i.input)): AgentResponse {
   response.summary.total = files.length;

@@ -29,15 +29,38 @@ export class Reporter {
   cancel() { this.active?.cancel('已停止，清理临时文件'); this.active = undefined; }
   inspections(data: Inspection[], report: ReportOutput = inspectionReport(data)) {
     if (this.json) { process.stdout.write(`${JSON.stringify(report, null, 2)}\n`); return; }
+    const counts = { valid: 0, absent: 0, invalid: 0, unsupported: 0 };
+    for (const item of data) counts[item.motion.status]++;
+    const overview = [
+      `共 ${data.length} 张  ·  实况 ${counts.valid}  ·  静态 ${counts.absent}`,
+      ...(counts.unsupported || counts.invalid ? [`暂不支持 ${counts.unsupported}  ·  失败 ${counts.invalid}`] : []),
+    ].join('\n');
+    this.inspectionPanel('检查概览', overview);
     const labels = { valid: '实况', absent: '静态', invalid: '失败', unsupported: '暂不支持' };
+    const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(2)} KiB` : `${(bytes / 1024 / 1024).toFixed(2)} MiB`;
+    const names = new Map<string, number>();
+    for (const item of data) names.set(basename(item.input), (names.get(basename(item.input)) ?? 0) + 1);
+    const lines: string[] = [];
     for (const item of data) {
-      const text = `${safeText(basename(item.input))}  ${labels[item.motion.status]}${item.motion.video ? ` · MP4 ${(item.motion.video.length / 1024 / 1024).toFixed(2)} MB` : ''}`;
-      if (this.pretty) p.log.info(text, { output: process.stderr }); else process.stdout.write(`${text}\n`);
-      if (item.error) this.note(item.error.message, true);
-      for (const warning of item.warnings) this.detail(warning);
+      const name = names.get(basename(item.input))! > 1 ? relative(process.cwd(), item.input) || item.input : basename(item.input);
+      const fields = [labels[item.motion.status]];
+      if (item.motion.status === 'valid') {
+        if (item.motion.video) fields.push(`MP4 ${size(item.motion.video.length)}`);
+      }
+      lines.push(`${safeText(name)}  ·  ${fields.join(' · ')}`);
+      if (item.error) lines.push(`  ↳ ${safeText(item.error.message)}`);
+    }
+    this.inspectionPanel('文件结果', lines.join('\n') || '没有找到可检查的图片。');
+    if (data.length) {
+      if (this.pretty) p.log.info('完整详情：--json', { output: process.stderr });
+      else process.stdout.write('完整详情：--json\n');
     }
     this.reportStatus(report);
     if (this.pretty) p.outro('检查完成', { output: process.stderr });
+  }
+  private inspectionPanel(title: string, body: string) {
+    if (this.pretty) p.note(body, title, { output: process.stderr });
+    else process.stdout.write(`\n${title}\n${'─'.repeat(36)}\n${body}\n`);
   }
   private reportStatus(report: ReportOutput) {
     if (report.error) this.note(report.error.message, true);

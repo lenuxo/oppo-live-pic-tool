@@ -90,13 +90,12 @@ testWithFixtures('同批同名输出保留成对编号，包括 dry-run', async 
   assert.ok('inspection' in a && 'inspection' in b); assert.notEqual(a.image, b.image);
 });
 
-test('未知厂商默认跳过；XML 前缀变化、转义文本正常处理', async t => {
+test('未知厂商默认可提取；XML 前缀变化、转义文本正常处理', async t => {
   const dir = await workspace(t), input = join(dir, 'live.jpg'), v = video();
   await writeFile(input, Buffer.concat([jpeg(metadata(v.length, 'Different')), v]));
   const i = await inspectFile(input); assert.equal(i.motion.status, 'valid');
   const options = { out: join(dir, 'out'), base: dir, conflict: 'error' as const };
-  const blocked = await planExtraction(i, options); assert.ok('status' in blocked); assert.equal(blocked.status, 'skipped');
-  const plan = await planExtraction(i, { ...options, allowUnknownVendor: true }); assert.ok('inspection' in plan);
+  const plan = await planExtraction(i, options); assert.ok('inspection' in plan);
   const r = await executeExtraction(plan); assert.equal(r.status, 'extracted');
   assert.ok((await readFile(r.image!)).includes(Buffer.from('dc:title="A &amp; B"')));
 });
@@ -353,4 +352,74 @@ testWithFixtures('长文件名使用短临时名称，不因追加随机后缀�
   const plan = await planExtraction(await inspectFile(input), { out: join(dir, 'out'), base: dir, conflict: 'error' }); assert.ok('inspection' in plan);
   assert.equal((await executeExtraction(plan)).status, 'extracted');
   assert.equal((await readdir(join(dir, 'out'))).length, 2);
+});
+
+test('旧版 MicroVideoOffset：属性/元素写法、填充、无损提取与 AI 响应', async t => {
+  const dir = await workspace(t), v = video();
+  for (const elements of [false, true]) {
+    const fields = elements ? `<c:MicroVideo>1</c:MicroVideo><c:MicroVideoOffset>${v.length}</c:MicroVideoOffset>` : '';
+    const xml = `<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:c="http://ns.google.com/photos/1.0/camera/" ${elements ? '' : `c:MicroVideo="1" c:MicroVideoOffset="${v.length}"`}>${fields}</x:xmpmeta>`;
+    const input = join(dir, `legacy-${elements}.jpg`), image = jpeg(xml);
+    await writeFile(input, Buffer.concat([image, Buffer.alloc(17), v]));
+    const i = await inspectFile(input);
+    assert.equal(i.motion.status, 'valid'); assert.equal(i.motion.method, 'microvideo-offset');
+    assert.equal(i.motion.video?.offset, image.length + 17);
+    const plan = await planExtraction(i, { out: join(dir, 'out'), base: dir, conflict: 'error' }); assert.ok('inspection' in plan);
+    const result = await executeExtraction(plan); assert.equal(result.status, 'extracted');
+    assert.deepEqual(await readFile(result.video!), v);
+    const still = await inspectFile(result.image!); assert.equal(still.motion.status, 'absent');
+    assert.ok(!(await readFile(result.image!)).includes(Buffer.from('MicroVideo')));
+    const run = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli.ts', 'extract', input, '--agent', '--dry-run', '--out', join(dir, 'preview')], { encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr); const response = JSON.parse(run.stdout);
+    assert.equal(response.results[0].code, 'PLANNED'); assert.equal(response.summary.planned, 1);
+    assert.equal(response.results[0].inspection.motion.method, 'microvideo-offset');
+  }
+});
+
+test('主图填充正确定位视频，静态输出不含填充；标准目录优先于旧版偏移', async t => {
+  const dir = await workspace(t), v = video(), input = join(dir, 'padded.jpg');
+  const xml = metadata(v.length).replace('c:MotionPhoto="1"', 'c:MotionPhoto="1" c:MicroVideo="1" c:MicroVideoOffset="not-a-number"').replace('i:Semantic="Primary"', 'i:Semantic="Primary" i:Padding="23"');
+  const image = jpeg(xml);
+  await writeFile(input, Buffer.concat([image, Buffer.alloc(23, 0x67), v]));
+  const i = await inspectFile(input); assert.equal(i.motion.status, 'valid'); assert.equal(i.motion.method, 'xmp-directory');
+  assert.equal(i.motion.video?.offset, image.length + 23);
+  // Origin evidence is informational, including a known non-OPPO origin.
+  i.vendor = { value: 'other', evidence: ['EXIF Make: another vendor'] };
+  const plan = await planExtraction(i, { out: join(dir, 'out'), base: dir, conflict: 'error' }); assert.ok('inspection' in plan);
+  const result = await executeExtraction(plan); assert.equal(result.status, 'extracted');
+  assert.deepEqual(await readFile(result.video!), v);
+  const r = await Reader.open(result.image!);
+  try { assert.equal((await parseJpeg(r)).end, r.size); } finally { await r.close(); }
+  assert.equal((await inspectFile(result.image!)).motion.status, 'absent');
+  assert.ok(!(await readFile(result.image!)).includes(Buffer.from('Padding')));
+});
+
+test('旧版偏移拒绝越界/无效值/伪视频；静态开关和显式恢复', async t => {
+  const dir = await workspace(t), input = join(dir, 'bad-offset.jpg'), v = video();
+  const xml = (offset: string, flag = '1') => `<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:c="http://ns.google.com/photos/1.0/camera/" c:MicroVideo="${flag}" c:MicroVideoOffset="${offset}"/>`;
+  for (const offset of ['0', '-1', '1.5', '9007199254740992', '999999', String(v.length + 1)]) {
+    await writeFile(input, Buffer.concat([jpeg(xml(offset)), v]));
+    assert.equal((await inspectFile(input)).motion.status, 'invalid', offset);
+  }
+  const fake = Buffer.from('garbageftypisom');
+  await writeFile(input, Buffer.concat([jpeg(xml(String(fake.length))), fake]));
+  assert.equal((await inspectFile(input)).motion.status, 'invalid');
+  await writeFile(input, Buffer.concat([jpeg(xml(String(v.length), '0')), v]));
+  assert.equal((await inspectFile(input)).motion.status, 'absent');
+  await writeFile(input, Buffer.concat([jpeg(xml('999999')), v]));
+  assert.equal((await inspectFile(input, { recover: true })).motion.method, 'recovery-scan');
+  await writeFile(input, Buffer.concat([jpeg(xml(String(v.length))), v.subarray(0, -1)]));
+  assert.equal((await inspectFile(input)).motion.status, 'invalid');
+});
+
+test('容器填充拒绝越界及次级填充；旧版偏移重复冲突不猜测', async t => {
+  const dir = await workspace(t), input = join(dir, 'invalid-padding.jpg'), v = video();
+  for (const xml of [
+    metadata(v.length).replace('i:Semantic="Primary"', 'i:Semantic="Primary" i:Padding="999999"'),
+    metadata(v.length).replace('i:Semantic="MotionPhoto"', 'i:Semantic="MotionPhoto" i:Padding="1"'),
+    `<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:c="http://ns.google.com/photos/1.0/camera/" c:MicroVideo="1" c:MicroVideoOffset="${v.length}"><c:MicroVideoOffset>1</c:MicroVideoOffset></x:xmpmeta>`,
+  ]) {
+    await writeFile(input, Buffer.concat([jpeg(xml), v]));
+    assert.notEqual((await inspectFile(input)).motion.status, 'valid');
+  }
 });

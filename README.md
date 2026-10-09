@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Node.js CLI for inspecting OPPO/Oplus JPEG motion photos and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.3.0. See the [iteration plan](ITERATION.md) for planned improvements.
+A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.4.0. See the [iteration plan](ITERATION.md) for planned improvements.
 
 ## Getting started
 
@@ -42,7 +42,7 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 | `--on-conflict error\|skip\|rename` | Defaults to error; rename uses the same suffix for JPG, MP4, and optional extra data |
 | `--dry-run` | Preview without creating directories or writing files; extract only |
 | `--recover` | Search in chunks and validate a trailing MP4 when metadata is missing or cannot locate it |
-| `--allow-unknown-vendor` | Allow motion photos without OPPO/Oplus origin evidence; extract only |
+| `--allow-unknown-vendor` | Deprecated compatibility option; validated motion photos are accepted regardless of vendor |
 | `--jobs <n>` | Concurrency from 1 to 32; defaults to 4 |
 | `--save-extra` | Copy data following the Oplus primary video into a matching `.extra.bin` file; extract only |
 | `--report <file>` | Save a versioned JSON report; existing reports are never overwritten; dry-run does not write reports |
@@ -53,7 +53,9 @@ Commands run directly when arguments are provided. Running without arguments in 
 
 Directory scanning preserves relative paths: `photos/trip/IMG.jpg` becomes `output/trip/IMG.jpg` and `output/trip/IMG.mp4`. The output directory is automatically excluded. Individual files are identified by content; directory scans filter common image extensions.
 
-Ordinary photos, photos from other vendors, and unsupported layouts are skipped. Corrupt inputs and output conflicts are reported as failures while other files continue processing. Exit codes: 0 for completion, 1 for file processing failures, 2 for invalid arguments, and 130 for cancellation. Cancellation preserves completed file pairs and cleans up outputs from active tasks.
+Ordinary photos and unsupported layouts are skipped. Validated motion photos are accepted regardless of vendor. Corrupt inputs and output conflicts are reported as failures while other files continue processing. Exit codes: 0 for completion, 1 for file processing failures, 2 for invalid arguments, and 130 for cancellation. Cancellation preserves completed file pairs and cleans up outputs from active tasks.
+
+Inspection output includes a compact overview and a file results panel showing whether each file is a motion photo, its video format and size, and any inspection failure reason. `--json` and `--agent` remain available for machine-readable results.
 
 ## Supported formats
 
@@ -61,13 +63,15 @@ Supports standard XMP container directories containing a primary JPEG, an option
 
 When an Oplus container includes data after its primary MP4, extraction uses `VideoLength` to locate the structurally validated primary video. Extra data is omitted by default; `--save-extra` saves it byte-for-byte as `.extra.bin`. Reports include the ranges of the primary video and extra data. The original file is preserved. The meaning of proprietary extra data is not yet established.
 
+Legacy JPEG MicroVideo files are supported through `MicroVideo="1"` and `MicroVideoOffset` (counted backward from the end of the file). The range must lie after the JPEG and contain a structurally valid MP4. Standard container directories take precedence over legacy offsets. Primary-image padding before an MP4 is supported when no GainMap is present; padding is omitted from the extracted still image.
+
 Oplus v2 format compatibility and camera vendor identification are reported separately. A compatible file can be extracted without claiming that its camera vendor has been confirmed as OPPO.
 
 Still images are not re-encoded. JPEG compressed data, EXIF, and gain maps are retained. Google/Oplus motion fields and video directory entries are removed, HDR directory entries are preserved, and MP Index offsets are adjusted for metadata length changes. MP4 bytes are copied unchanged, preserving original audio, video, and timestamps.
 
 ### Limitations
 
-- HEIC/AVIF, extended XMP, multiple standard XMP packets, nonzero container padding, and unknown multimedia layouts are not supported.
+- HEIC/AVIF, extended XMP, multiple standard XMP packets, padded GainMap layouts and secondary-item padding, and unknown multimedia layouts are not supported.
 - MP Index support is limited to a primary image or a primary image with one gain map. Incomplete MPF/XMP metadata is not repaired by guessing.
 - MP4 validation checks box ranges, moov, mdat, and a video track. It does not fully parse sample tables or decode video at runtime.
 - `--recover` is an explicit recovery feature and may miss variants with proprietary trailing data. An `ftyp` string alone is insufficient to identify a valid video.
@@ -89,7 +93,7 @@ oppo-live extract ./photos --out ./output --agent --report ./agent-report.json
 
 Fixed fields are `schemaVersion: 1`, `protocol: "oppo-live.agent"`, `tool`, `requestId` (null when omitted), `command`, `status`, `summary`, `results`, and `error` (null on success). Top-level status is `success / partial / failed / cancelled`. `summary.processed + summary.pending = summary.total`; inspection counts are recorded separately as `inspected`. Capability queries and errors before processing have no file results and zero counts.
 
-Each result includes stable `status`, `code`, and `outputsCommitted` fields. AI callers should use these fields rather than parsing the display-oriented `message`. Ordinary photos use `ORDINARY_PHOTO`, unsupported formats use `UNSUPPORTED_FORMAT`, and nonmatching or unknown vendors use `NON_OPPO_VENDOR / UNKNOWN_VENDOR`. Normal skips do not fail a batch. A batch where every processed file fails has status `failed`; a mix of failures and successful or skipped files has status `partial`.
+Each result includes stable `status`, `code`, and `outputsCommitted` fields. AI callers should use these fields rather than parsing the display-oriented `message`. Ordinary photos use `ORDINARY_PHOTO`, unsupported formats use `UNSUPPORTED_FORMAT`; vendor evidence is informational and does not block extraction. Normal skips do not fail a batch. A batch where every processed file fails has status `failed`; a mix of failures and successful or skipped files has status `partial`.
 
 Cancellation preserves completed results and lists unfinished files as `PENDING`. Do not assume those files have been inspected or extracted. Cleanup failures include residual paths in `cleanupIssues`; inspect them before retrying. Uncatchable termination such as SIGKILL cannot guarantee a response.
 
