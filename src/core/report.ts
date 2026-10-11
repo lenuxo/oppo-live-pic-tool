@@ -10,12 +10,12 @@ export function inspectionReport(inspections: Inspection[]) {
   for (const i of inspections) summary[i.motion.status]++;
   return { schemaVersion: 1, tool: { name: 'oppo-live', version: VERSION }, createdAt: new Date().toISOString(), command: 'inspect' as const, summary, results: inspections.map(publicInspection) };
 }
-export function extractionReport(results: ExtractionResult[], inspections: Inspection[]) {
+export function extractionReport(results: ExtractionResult[], inspections: Inspection[], command: 'extract' | 'quick' = 'extract') {
   const summary = { extracted: 0, planned: 0, skipped: 0, failed: 0 };
   const byPath = new Map(inspections.map(i => [i.input, i]));
   for (const r of results) summary[r.status]++;
   return {
-    schemaVersion: 1, tool: { name: 'oppo-live', version: VERSION }, createdAt: new Date().toISOString(), command: 'extract' as const, summary,
+    schemaVersion: 1, tool: { name: 'oppo-live', version: VERSION }, createdAt: new Date().toISOString(), command, summary,
     results: results.map(r => {
       const i = byPath.get(r.input);
       return { ...r, format: i?.format, vendor: i?.vendor, motion: i?.motion, profile: i?.profile, warnings: [...(i?.warnings ?? []).map(w => r.extra && ['extracted', 'planned'].includes(r.status) ? w.replace('可用 --save-extra 单独保存', r.status === 'planned' ? '计划另存附加数据' : '已另存附加数据') : w), ...(r.warnings ?? [])] };

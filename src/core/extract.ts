@@ -8,7 +8,7 @@ import { parseXmp } from '../formats/xmp.js';
 import { planAppleCompatibility, type AppleCompatibility } from '../formats/apple-compat.js';
 import { validateMp4 } from '../formats/mp4.js';
 import { PhotoError, type Inspection, type ExtractOptions, type ExtractionResult, type Patch } from './types.js';
-export interface ExtractionPlan { inspection: Inspection; image: string; video: string; extra?: string; options: ExtractOptions; videoPatches?: Patch[]; videoCompatibility?: AppleCompatibility }
+export interface ExtractionPlan { inspection: Inspection; image?: string; video: string; extra?: string; options: ExtractOptions; videoPatches?: Patch[]; videoCompatibility?: AppleCompatibility }
 async function exists(path: string): Promise<boolean> {
   try { await lstat(path); return true; } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
 }
@@ -23,16 +23,17 @@ export async function planExtraction(inspection: Inspection, options: ExtractOpt
   if (!inside(root, target)) throw new PhotoError('INVALID_OUTPUT', '输出路径越界');
   const extension = extname(target);
   const stem = extension ? target.slice(0, -extension.length) : target;
-  let image = `${stem}.jpg`, video = `${stem}.mp4`;
-  let extra = options.saveExtra && inspection.motion.extra ? `${stem}.extra.bin` : undefined;
-  if (resolve(image) === resolve(input)) throw new PhotoError('INVALID_OUTPUT', '输出图片不能与输入文件相同');
-  for (let suffix = 1; reserved.has(image) || reserved.has(video) || (extra && reserved.has(extra)) || await exists(image) || await exists(video) || (extra && await exists(extra)); suffix++) {
+  let image = options.videoOnly ? undefined : `${stem}.jpg`, video = `${stem}.mp4`;
+  let extra = !options.videoOnly && options.saveExtra && inspection.motion.extra ? `${stem}.extra.bin` : undefined;
+  if (resolve(video) === resolve(input)) throw new PhotoError('INVALID_OUTPUT', '输出视频不能与输入文件相同');
+  if (image && resolve(image) === resolve(input)) throw new PhotoError('INVALID_OUTPUT', '输出图片不能与输入文件相同');
+  for (let suffix = 1; (image && reserved.has(image)) || reserved.has(video) || (extra && reserved.has(extra)) || (image && await exists(image)) || await exists(video) || (extra && await exists(extra)); suffix++) {
     if (options.conflict === 'skip') return { input, status: 'skipped', reason: '输出文件已存在', code: 'OUTPUT_CONFLICT' };
     if (options.conflict === 'error') return { input, status: 'failed', reason: '输出文件已存在', code: 'OUTPUT_CONFLICT' };
-    image = `${stem}-${suffix}.jpg`; video = `${stem}-${suffix}.mp4`;
+    if (image) image = `${stem}-${suffix}.jpg`; video = `${stem}-${suffix}.mp4`;
     if (extra) extra = `${stem}-${suffix}.extra.bin`;
   }
-  reserved.add(image); reserved.add(video); if (extra) reserved.add(extra);
+  if (image) reserved.add(image); reserved.add(video); if (extra) reserved.add(extra);
   let videoPatches: Patch[] | undefined, videoCompatibility: AppleCompatibility | undefined;
   if (options.videoCompat === 'apple') {
     const reader = await Reader.open(input, options.signal);
@@ -49,9 +50,9 @@ export async function planExtraction(inspection: Inspection, options: ExtractOpt
 }
 export async function executeExtraction(plan: ExtractionPlan): Promise<ExtractionResult> {
   const { inspection, image, video, extra, options } = plan;
-  const result: ExtractionResult = { input: inspection.input, status: options.dryRun ? 'planned' : 'extracted', image, video, ...(extra ? { extra } : {}), ...(plan.videoCompatibility ? { videoCompatibility: plan.videoCompatibility } : {}) };
+  const result: ExtractionResult = { input: inspection.input, status: options.dryRun ? 'planned' : 'extracted', ...(image ? { image } : {}), video, ...(extra ? { extra } : {}), ...(plan.videoCompatibility ? { videoCompatibility: plan.videoCompatibility } : {}) };
   if (options.dryRun) return result;
-  const tempImage = temporaryPath(image);
+  const tempImage = image ? temporaryPath(image) : undefined;
   const tempVideo = temporaryPath(video);
   const tempExtra = extra ? temporaryPath(extra) : undefined;
   const transaction = new OutputTransaction(options.signal);
@@ -61,7 +62,7 @@ export async function executeExtraction(plan: ExtractionPlan): Promise<Extractio
     options.signal?.throwIfAborted();
     reader = await Reader.open(inspection.input, options.signal);
     if (reader.stamp !== inspection.layout!.fingerprint) throw new PhotoError('SOURCE_CHANGED', '源文件在检查后发生变化');
-    await mkdir(dirname(image), { recursive: true });
+    await mkdir(dirname(video), { recursive: true });
     async function write(path: string, mode: 'image' | 'video' | 'extra') {
       const out = await transaction.create(path);
       try {
@@ -94,19 +95,22 @@ export async function executeExtraction(plan: ExtractionPlan): Promise<Extractio
         await out.sync();
       } finally { await out.close(); }
     }
-    await write(tempImage, 'image'); await write(tempVideo, 'video');
+    if (tempImage) await write(tempImage, 'image');
+    await write(tempVideo, 'video');
     if (tempExtra) await write(tempExtra, 'extra');
-    const jpg = await Reader.open(tempImage);
-    try {
-      const parsed = await parseJpeg(jpg), xmp = parseXmp(parsed.segments);
-      let end = parsed.end;
-      if (xmp.items.some(i => i.Semantic === 'GainMap')) end = (await parseJpeg(jpg, end)).end;
-      if (end !== jpg.size || xmp.hasMotion) throw new PhotoError('OUTPUT_VALIDATION', '静态图片仍含实况数据或布局无效');
-    } finally { await jpg.close(); }
+    if (tempImage) {
+      const jpg = await Reader.open(tempImage);
+      try {
+        const parsed = await parseJpeg(jpg), xmp = parseXmp(parsed.segments);
+        let end = parsed.end;
+        if (xmp.items.some(i => i.Semantic === 'GainMap')) end = (await parseJpeg(jpg, end)).end;
+        if (end !== jpg.size || xmp.hasMotion) throw new PhotoError('OUTPUT_VALIDATION', '静态图片仍含实况数据或布局无效');
+      } finally { await jpg.close(); }
+    }
     const mp4 = await Reader.open(tempVideo);
     try { await validateMp4(mp4, { offset: 0, length: mp4.size }); } finally { await mp4.close(); }
     await reader.assertUnchanged(); options.signal?.throwIfAborted();
-    await transaction.publish(tempImage, image);
+    if (tempImage && image) await transaction.publish(tempImage, image);
     await transaction.publish(tempVideo, video);
     if (tempExtra && extra) await transaction.publish(tempExtra, extra);
     options.signal?.throwIfAborted();

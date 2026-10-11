@@ -4,7 +4,7 @@
 
 [English](README.md) | 简体中文
 
-Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.5.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
+Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.6.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
 
 ## 安装
 
@@ -38,6 +38,20 @@ npm run dev -- extract ./photos --out ./output
 ```
 
 编译后可直接运行 `node dist/cli.js`。安装 npm 包后，命令名为 `oppo-live`。
+
+## 快速提取视频
+
+```bash
+oppo-live quick ./photos
+oppo-live quick ./photos/IMG.jpg
+oppo-live quick ./photos --recursive
+oppo-live quick ./photos --video-compat apple
+oppo-live quick ./photos --dry-run --agent
+```
+
+`quick` 是仅输出视频的预设：`photos/trip/IMG.jpg` → `photos/trip/IMG.mp4`，直接保存到原图片旁边。源图片不修改，不生成静态 JPG 或附加数据文件。目录默认只扫描当前层级，使用 `--recursive` 扫描子目录。普通照片和不支持的格式自动跳过。
+
+已有视频默认跳过，不验证已有文件内容；可用 `--on-conflict error` 报告冲突，或用 `--on-conflict rename` 保存为带编号的视频。默认逐字节保留原视频，仅显式选择 `--video-compat apple` 时尝试兼容调整。支持 `--recover`、`--jobs`、`--dry-run`、`--json`、`--agent` 及可选 `--report`，不接受 `--out` 或 `--save-extra`。
 
 ## 命令
 

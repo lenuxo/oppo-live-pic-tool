@@ -4,7 +4,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.5.0. See the [iteration plan](ITERATION.md) for planned improvements.
+A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.6.0. See the [iteration plan](ITERATION.md) for planned improvements.
 
 ## Installation
 
@@ -38,6 +38,20 @@ npm run dev -- extract ./photos --out ./output
 ```
 
 After building, run `node dist/cli.js` directly. The installed package exposes the `oppo-live` command.
+
+## Quick video extraction
+
+```bash
+oppo-live quick ./photos
+oppo-live quick ./photos/IMG.jpg
+oppo-live quick ./photos --recursive
+oppo-live quick ./photos --video-compat apple
+oppo-live quick ./photos --dry-run --agent
+```
+
+`quick` is a preset that writes only videos beside their source images: `photos/trip/IMG.jpg` → `photos/trip/IMG.mp4`. Source images are never modified, and no still JPG or extra-data file is created. Directories are scanned at the top level by default; use `--recursive` for subdirectories. Ordinary photos and unsupported formats are skipped.
+
+Existing videos are skipped by default without verifying their contents. Use `--on-conflict error` to report conflicts or `--on-conflict rename` to save a numbered video. The preset preserves original video bytes unless `--video-compat apple` is explicitly selected. It supports `--recover`, `--jobs`, `--dry-run`, `--json`, `--agent`, and an optional `--report`. It does not accept `--out` or `--save-extra`.
 
 ## Commands
 

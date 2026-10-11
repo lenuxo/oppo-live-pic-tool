@@ -13,6 +13,8 @@ export interface Inspection {
   layout?: { imageEnd: number; patches: Patch[]; fingerprint: string };
 }
 export interface ExtractOptions {
+  /** Only write the video output; used by the quick preset. */
+  videoOnly?: boolean;
   out: string; base: string; conflict: 'error' | 'skip' | 'rename';
   /** Deprecated compatibility option; valid layouts are accepted regardless of vendor. */
   allowUnknownVendor?: boolean; videoCompat?: 'original' | 'apple'; saveExtra?: boolean; dryRun?: boolean; signal?: AbortSignal;

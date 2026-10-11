@@ -115,7 +115,7 @@ export class Reporter {
     const hint = '完整详情：--json 或 --report <file>';
     if (this.pretty) p.log.info(hint, { output: process.stderr }); else process.stdout.write(`${hint}\n`);
     this.reportStatus(report);
-    const end = counts.planned ? '预演完成，未写入文件' : counts.extracted ? `文件已保存至 ${safeText(out)}` : '处理完成，没有新文件';
+    const end = counts.planned ? '预演完成，未写入文件' : counts.extracted ? report.command === 'quick' ? '视频已保存在原图片旁边' : `文件已保存至 ${safeText(out)}` : '处理完成，没有新文件';
     if (this.pretty) p.outro(end, { output: process.stderr }); else process.stdout.write(`${end}\n`);
   }
 }

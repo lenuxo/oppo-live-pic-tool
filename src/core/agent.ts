@@ -1,7 +1,7 @@
 import { VERSION } from '../version.js';
 import { type Inspection, type ExtractionResult } from './types.js';
 import { publicInspection } from './report.js';
-export type AgentCommand = 'inspect' | 'extract' | 'capabilities' | null;
+export type AgentCommand = 'inspect' | 'extract' | 'quick' | 'capabilities' | null;
 export interface AgentResponse {
   schemaVersion: 1;
   protocol: 'oppo-live.agent';
@@ -23,6 +23,7 @@ export function capabilities() {
     commands: [
       { name: 'capabilities', requiredArguments: [], writesFiles: false },
       { name: 'inspect', requiredArguments: ['input'], writesFiles: 'only-with-report', options: ['--recursive', '--recover', '--jobs', '--report'] },
+      { name: 'quick', requiredArguments: ['input'], writesFiles: true, dryRunWritesFiles: false, options: ['--recursive', '--recover', '--jobs', '--on-conflict', '--video-compat', '--dry-run', '--report'], defaults: { onConflict: 'skip', videoCompat: 'original', recursive: false }, output: 'MP4 only, beside each source image; source images are unchanged; existing videos are skipped without verifying their contents' },
       { name: 'extract', requiredArguments: ['input'], writesFiles: true, dryRunWritesFiles: false, options: ['--recursive', '--recover', '--jobs', '--out', '--on-conflict', '--allow-unknown-vendor', '--save-extra', '--video-compat', '--dry-run', '--report'] },
     ],
     globalOptions: ['--agent', '--request-id', '--help', '--version'],
@@ -38,7 +39,7 @@ export function capabilities() {
     },
     responseSchema: {
       requiredFields: ['schemaVersion', 'protocol', 'tool', 'requestId', 'command', 'status', 'summary', 'results', 'error'],
-      resultStatuses: { inspect: ['inspected', 'failed', 'pending'], extract: ['extracted', 'planned', 'skipped', 'failed', 'pending'] },
+      resultStatuses: { inspect: ['inspected', 'failed', 'pending'], extract: ['extracted', 'planned', 'skipped', 'failed', 'pending'], quick: ['extracted', 'planned', 'skipped', 'failed', 'pending'] },
       summaryInvariant: 'processed + pending = total',
       error: 'null or {code, message, optional cleanupIssues}',
       outputPaths: 'absolute paths; pending means not completed, not safe to blindly retry',

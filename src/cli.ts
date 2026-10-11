@@ -22,7 +22,7 @@ function bootstrap(args: string[]) {
     if (token === '--agent') agent = true;
     else if (token.startsWith('--request-id=')) requestId = token.slice(13);
     else if (values.has(token)) { const value = args[i + 1]; if (value && !value.startsWith('-')) { i++; if (token === '--request-id') requestId = value; } }
-    else if (['inspect', 'extract', 'capabilities'].includes(token) && !command) command = token as AgentCommand;
+    else if (['inspect', 'extract', 'quick', 'capabilities'].includes(token) && !command) command = token as AgentCommand;
   }
   return { agent, requestId, command };
 }
@@ -35,7 +35,7 @@ let knownFiles: string[] = [];
 const completedInspections = new Map<string, Inspection>();
 const completedResults = new Map<string, ExtractionResult>();
 function snapshot() {
-  return populateAgent(response, knownFiles.flatMap(f => completedInspections.has(f) ? [completedInspections.get(f)!] : []), response.command === 'extract' ? knownFiles.flatMap(f => completedResults.has(f) ? [completedResults.get(f)!] : []) : undefined, knownFiles);
+  return populateAgent(response, knownFiles.flatMap(f => completedInspections.has(f) ? [completedInspections.get(f)!] : []), response.command === 'extract' || response.command === 'quick' ? knownFiles.flatMap(f => completedResults.has(f) ? [completedResults.get(f)!] : []) : undefined, knownFiles);
 }
 function emitAgent() { process.stdout.write(`${JSON.stringify(response, null, 2)}\n`); }
 const controller = new AbortController();
@@ -55,16 +55,17 @@ async function mapLimit<T, R>(items: T[], jobs: number, task: (item: T, index: n
   if (failed?.status === 'rejected') throw failed.reason;
   return results;
 }
-async function run(command: 'inspect' | 'extract', input: string, options: RunOptions, alreadyStarted = false) {
+async function run(command: 'inspect' | 'extract' | 'quick', input: string, options: RunOptions, alreadyStarted = false) {
   dispatched = true;
   machine = !!options.agent;
   response = agentResponse(command, options.requestId);
   const reporter = currentReporter = new Reporter(machine || !!options.json, options.color === false);
-  const out = resolve(options.out ?? './oppo-live-output');
+  let out = resolve(options.out ?? './oppo-live-output');
   if (options.report && !options.dryRun) await assertReportAvailable(options.report);
-  reporter.intro(resolve(input), command === 'extract' ? out : undefined, alreadyStarted);
+  reporter.intro(resolve(input), command === 'quick' ? '原图片所在目录（仅视频）' : command === 'extract' ? out : undefined, alreadyStarted);
   reporter.start('扫描图片');
-  const { files, base } = await scanFiles(input, { recursive: options.recursive, exclude: command === 'extract' ? out : undefined, signal: controller.signal });
+  const { files, base } = await scanFiles(input, { recursive: options.recursive, exclude: command === 'quick' ? '原图片所在目录（仅视频）' : command === 'extract' ? out : undefined, signal: controller.signal });
+  if (command === 'quick') out = base;
   knownFiles = files;
   reporter.stop(`扫描完成：${files.length} 张图片`);
   reporter.start('检查实况结构', files.length);
@@ -86,14 +87,14 @@ async function run(command: 'inspect' | 'extract', input: string, options: RunOp
   for (const inspection of inspections) {
     controller.signal.throwIfAborted();
     try {
-      plans.push(await planExtraction(inspection, { out, base, conflict: options.onConflict ?? 'error', allowUnknownVendor: options.allowUnknownVendor, saveExtra: options.saveExtra, videoCompat: options.videoCompat, dryRun: options.dryRun, signal: controller.signal }, reserved));
+      plans.push(await planExtraction(inspection, { out, base, videoOnly: command === 'quick', conflict: options.onConflict ?? (command === 'quick' ? 'skip' : 'error'), allowUnknownVendor: options.allowUnknownVendor, saveExtra: options.saveExtra, videoCompat: options.videoCompat, dryRun: options.dryRun, signal: controller.signal }, reserved));
     } catch (e) {
       if (controller.signal.aborted) throw e;
       plans.push({ input: inspection.input, status: 'failed', code: e instanceof PhotoError ? e.code : (e as NodeJS.ErrnoException).code ?? 'PLAN_ERROR', reason: e instanceof Error ? e.message : String(e) });
     }
   }
   done = 0;
-  reporter.start(options.dryRun ? '生成提取计划' : '提取照片与视频', plans.length);
+  reporter.start(options.dryRun ? '生成提取计划' : command === 'quick' ? '提取视频' : '提取照片与视频', plans.length);
   const results = await mapLimit(plans, options.jobs ?? 4, async plan => {
     let r: ExtractionResult;
     try { r = 'inspection' in plan ? await executeExtraction(plan) : plan; }
@@ -106,7 +107,7 @@ async function run(command: 'inspect' | 'extract', input: string, options: RunOp
   });
   reporter.stop(options.dryRun ? '预演完成' : '处理完成');
   if (machine) { snapshot(); await persistAgent(options); }
-  else { const report = await persist(extractionReport(results, inspections), options); reporter.summary(results, inspections, out, report); }
+  else { const report = await persist(extractionReport(results, inspections, command), options); reporter.summary(results, inspections, out, report); }
   if (results.some(r => r.status === 'failed')) process.exitCode = 1;
 }
 async function persist(report: ReportOutput, options: RunOptions): Promise<ReportOutput> {
@@ -154,6 +155,11 @@ common(program.command('extract').description('保留原文件，拆分静态 JP
   .option('--save-extra', '另存 Oplus 附加数据为同名 .extra.bin')
   .option('--dry-run', '仅生成提取计划，不写文件')
   .action((input, _options, command) => run('extract', input, command.optsWithGlobals()));
+common(program.command('quick').description('快速处理：仅提取视频到原图片旁边，默认跳过已有视频'))
+  .addOption(new Option('--on-conflict <strategy>', '已有视频的处理方式').choices(['error', 'skip', 'rename']).default('skip'))
+  .addOption(new Option('--video-compat <mode>', '视频输出：original 保留原视频；apple 安全调整 HEVC 封装').choices(['original', 'apple']).default('original'))
+  .option('--dry-run', '仅预演，不写文件')
+  .action((input, _options, command) => run('quick', input, command.optsWithGlobals()));
 program.command('capabilities').description('输出命令、格式和机器调用契约').action((_options, command) => {
   dispatched = true;
   const options = command.optsWithGlobals();
@@ -162,7 +168,7 @@ program.command('capabilities').description('输出命令、格式和机器调�
   response.capabilities = capabilities();
   if (!machine) process.stdout.write(`${JSON.stringify(response.capabilities, null, 2)}\n`);
 });
-program.addHelpText('after', '\n示例：\n  oppo-live inspect ./photos -r\n  oppo-live extract ./photos -r -o ./output\n  oppo-live extract ./photos --dry-run --json\n\n不带参数运行可进入交互式引导。');
+program.addHelpText('after', '\n示例：\n  oppo-live quick ./photos\n  oppo-live inspect ./photos -r\n  oppo-live extract ./photos -r -o ./output\n  oppo-live extract ./photos --dry-run --json\n\n不带参数运行可进入交互式引导。');
 try {
   if (process.argv.length === 2 && process.stdin.isTTY && process.stderr.isTTY) {
     const selection = await interactive();
@@ -170,7 +176,7 @@ try {
   } else if (process.argv.length === 2) program.outputHelp();
   else {
     await program.parseAsync(process.argv, { from: 'node' });
-    if (machine && !dispatched) throw new PhotoError('MISSING_COMMAND', '请选择 inspect、extract 或 capabilities 命令');
+    if (machine && !dispatched) throw new PhotoError('MISSING_COMMAND', '请选择 inspect、extract、quick 或 capabilities 命令');
   }
 } catch (e) {
   if (machine) {
