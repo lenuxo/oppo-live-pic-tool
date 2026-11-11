@@ -11,7 +11,7 @@ const ITEM = 'http://ns.google.com/photos/1.0/container/item/';
 type Node = { [key: string]: unknown };
 type NS = Record<string, string>;
 interface Item { Mime?: string; Semantic?: string; Length?: string; Padding?: string }
-export interface Xmp { items: Item[]; hasMotion: boolean; patches: Patch[]; extended: boolean; microVideoOffset?: string; motionPhoto?: boolean; microVideo?: boolean; oplusVersion?: string; oplusVideoLength?: string; oplusOwner?: string }
+export interface Xmp { rewriteError?: PhotoError; items: Item[]; hasMotion: boolean; patches: Patch[]; extended: boolean; microVideoOffset?: string; motionPhoto?: boolean; microVideo?: boolean; oplusVersion?: string; oplusVideoLength?: string; oplusOwner?: string }
 function namespace(attrs: Record<string, string>, inherited: NS): NS {
   const ns = { ...inherited };
   for (const [key, value] of Object.entries(attrs)) {
@@ -29,7 +29,7 @@ function scalar(nodes: Node[]): string {
   if (nodes.some(n => Object.keys(n).some(k => k !== '#text' && k !== ':@'))) throw new PhotoError('UNSUPPORTED_XMP', '实况字段的复合 XML 写法暂不支持');
   return nodes.map(n => n['#text'] ?? '').join('').trim();
 }
-export function parseXmp(segments: Segment[]): Xmp {
+export function parseXmp(segments: Segment[], prepareStill = true): Xmp {
   const result: Xmp = { items: [], hasMotion: false, patches: [], extended: false };
   let directories = 0, packets = 0;
   for (const seg of segments) {
@@ -112,9 +112,12 @@ export function parseXmp(segments: Segment[]): Xmp {
       });
     }
     const cleaned = visit(tree, {});
-    if (changed) {
+    if (changed && prepareStill) {
       const body = Buffer.concat([STANDARD, Buffer.from(new XMLBuilder({ preserveOrder: true, ignoreAttributes: false }).build(cleaned))]);
-      if (body.length + 2 > 65535) throw new PhotoError('XMP_TOO_LARGE', '清理后的 XMP 超过 JPEG segment 限制');
+      if (body.length + 2 > 65535) {
+        result.rewriteError = new PhotoError('XMP_TOO_LARGE', '清理后的 XMP 超过 JPEG segment 限制');
+        continue;
+      }
       const header = Buffer.alloc(4); header[0] = 0xff; header[1] = 0xe1; header.writeUInt16BE(body.length + 2, 2);
       result.patches.push({ offset: seg.start, length: seg.end - seg.start, bytes: Buffer.concat([header, body]) });
     }

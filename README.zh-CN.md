@@ -4,7 +4,7 @@
 
 [English](README.md) | 简体中文
 
-Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.7.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
+Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.8.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
 
 ## 安装
 
@@ -41,6 +41,8 @@ npm run dev -- extract ./photos --out ./output
 
 ## 快速提取视频
 
+快速模式独立验证内嵌 MP4。即使静态图的 MP Index 无法重写，只要视频范围和结构通过检查，仍可提取视频。提取时按 `--jobs` 分批处理。指定 `--report` 时，先完成整批输出路径检查再写文件。
+
 ```bash
 oppo-live quick ./photos
 oppo-live quick ./photos/IMG.jpg
@@ -55,6 +57,8 @@ oppo-live quick ./photos --dry-run --agent
 
 ## 命令
 
+使用 `oppo-live --help` 查看命令列表，使用 `oppo-live help quick` 或 `oppo-live quick -h` 查看子命令参数。机器调用可用 `oppo-live capabilities --agent` 查询命令及默认值。
+
 ```bash
 oppo-live inspect ./photos --recursive
 oppo-live inspect ./photos --recursive --json
@@ -68,12 +72,12 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 | --- | --- |
 | `-r, --recursive` | 扫描子目录；不跟随符号链接 |
 | `-o, --out <dir>` | 输出目录，默认 `./oppo-live-output`，仅 extract |
-| `--on-conflict error\|skip\|rename` | 默认 error；rename 为 JPG/MP4/可选附加数据使用相同编号 |
-| `--dry-run` | 预演，不创建目录或写入文件，仅 extract |
+| `--on-conflict error\|skip\|rename` | `extract` 默认 error，`quick` 默认 skip。rename 为 JPG/MP4/可选附加数据使用相同编号 |
+| `--dry-run` | 预演，适用于 quick 和 extract，预演时不写媒体或报告 |
 | `--recover` | 元数据定位失败或缺失时，分块搜索并验证尾部 MP4 |
 | `--allow-unknown-vendor` | 旧版兼容参数；有效实况已默认允许提取，不限制厂商 |
 | `--jobs <n>` | 并发 1–32，默认 4 |
-| `--video-compat original\|apple` | 默认 original；apple 在安全条件下调整 HEVC 封装，不转码 |
+| `--video-compat original\|apple` | 适用于 quick 和 extract，默认 original。apple 在安全条件下调整 HEVC 封装，不转码 |
 | `--save-extra` | 将 Oplus 主视频后的附加内容逐字节另存为同名 `.extra.bin`，仅 extract |
 | `--report <file>` | 保存版本化 JSON 报告；已有报告不覆盖；dry-run 不写报告 |
 | `--json` | stdout 输出完整 JSON；不显示交互或动画 |
@@ -83,11 +87,13 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 
 扫描目录保留相对层级：`photos/trip/IMG.jpg` → `output/trip/IMG.jpg` + `output/trip/IMG.mp4`。自动排除输出目录。单文件输入按文件内容识别，目录扫描按常见图片扩展名筛选。
 
-普通照片和暂不支持的布局会跳过；通过结构验证的实况默认允许提取，不限制厂商；损坏输入及输出冲突会报告失败，继续处理其他文件。退出码：0 完成，1 文件处理失败，2 参数错误，130 取消。取消时已完成的文件对保留，正在处理的任务会清理临时输出。
+普通照片和暂不支持的布局会跳过；通过结构验证的实况默认允许提取，不限制厂商；损坏输入以及 error 策略下的输出冲突会报告失败，继续处理其他文件。退出码：0 完成，1 文件处理失败，2 参数错误，130 取消。取消时已完成的文件对保留，正在处理的任务会清理临时输出。
 
 检查结束后，输出简洁统计概览和文件结果面板，展示是否实况、视频格式和大小，检查失败时显示原因。需要机器可读结果时使用 `--json` 或 `--agent`。
 
 ## 格式支持
+
+对于已验证的实况，JSON 检查结果中的 `stillImage.status` 表示静态图导出能力。`ready` 表示可生成 JPG，`unavailable` 时可查看 `code` 和 `message`。快速模式只检查视频，返回 `unchecked`。
 
 显式标记 `MotionPhoto="0"` 的照片按静态图处理，即使其中保留视频目录或启用了 `--recover`。
 

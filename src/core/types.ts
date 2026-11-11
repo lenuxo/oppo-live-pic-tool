@@ -6,6 +6,7 @@ export interface Inspection {
   format: 'jpeg' | 'unsupported';
   vendor: { value: 'oppo' | 'other' | 'unknown'; evidence: string[] };
   motion: { status: 'valid' | 'absent' | 'invalid' | 'unsupported'; method?: 'xmp-directory' | 'microvideo-offset' | 'recovery-scan'; video?: Range; extra?: Range };
+  stillImage?: { status: 'ready' | 'unchecked' | 'unavailable'; code?: string; message?: string };
   profile?: 'oplus-v2';
   warnings: string[];
   error?: { code: string; message: string };

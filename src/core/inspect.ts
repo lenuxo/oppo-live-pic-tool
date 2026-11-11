@@ -5,7 +5,7 @@ import { parseXmp, integer } from '../formats/xmp.js';
 import { patchMpf } from '../formats/mpf.js';
 import { validateMp4, recoverMp4 } from '../formats/mp4.js';
 import { PhotoError, type Inspection, type Range } from './types.js';
-export async function inspectFile(input: string, options: { recover?: boolean; signal?: AbortSignal } = {}): Promise<Inspection> {
+export async function inspectFile(input: string, options: { recover?: boolean; videoOnly?: boolean; signal?: AbortSignal } = {}): Promise<Inspection> {
   const result: Inspection = { input: resolve(input), format: 'unsupported', vendor: { value: 'unknown', evidence: [] }, motion: { status: 'absent' }, warnings: [] };
   let r: Reader | undefined;
   try {
@@ -16,7 +16,7 @@ export async function inspectFile(input: string, options: { recover?: boolean; s
     const jpeg = await parseJpeg(r);
     if (jpeg.make) result.vendor = { value: /^oppo(?:\b|$)/i.test(jpeg.make) ? 'oppo' : 'other', evidence: [`EXIF Make: ${jpeg.make}`] };
     if (jpeg.model) result.vendor.evidence.push(`EXIF Model: ${jpeg.model}`);
-    const xmp = parseXmp(jpeg.segments);
+    const xmp = parseXmp(jpeg.segments, !options.videoOnly);
     if (xmp.motionPhoto === false || (xmp.motionPhoto === undefined && !xmp.items.length && xmp.microVideo === false)) {
       await r.assertUnchanged();
       return result;
@@ -88,11 +88,23 @@ export async function inspectFile(input: string, options: { recover?: boolean; s
       if (r.size > imageEnd) result.warnings.push('图片后存在额外数据；未启用恢复搜索');
       await r.assertUnchanged(); return result;
     }
-    const patches = [...xmp.patches, ...patchMpf(jpeg.segments, jpeg.end, imageEnd, xmp.patches)].sort((a, b) => a.offset - b.offset);
+    let patches = xmp.patches;
+    result.stillImage = { status: 'unchecked' };
+    if (!options.videoOnly) {
+      try {
+        if (xmp.rewriteError) throw xmp.rewriteError;
+        patches = [...patches, ...patchMpf(jpeg.segments, jpeg.end, imageEnd, patches)].sort((a, b) => a.offset - b.offset);
+        result.stillImage = { status: 'ready' };
+        if (gain) result.warnings.push('静态图片将保留 HDR 增益图和 MP Index');
+      } catch (e) {
+        if (!(e instanceof PhotoError)) throw e;
+        result.stillImage = { status: 'unavailable', code: e.code, message: e.message };
+        result.warnings.push(e.message);
+      }
+    }
     await r.assertUnchanged();
     result.motion.status = 'valid'; result.motion.video = range;
     result.layout = { imageEnd, patches, fingerprint: r.stamp };
-    if (gain) result.warnings.push('静态图片将保留 HDR 增益图和 MP Index');
     result.warnings.push('已验证 MP4 容器与视频轨道结构；未进行视频解码验证');
   } catch (e) {
     if (options.signal?.aborted) throw e;

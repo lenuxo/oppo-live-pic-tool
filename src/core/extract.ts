@@ -16,6 +16,11 @@ export async function planExtraction(inspection: Inspection, options: ExtractOpt
   const input = inspection.input;
   if (inspection.error && inspection.motion.status === 'invalid') return { input, status: 'failed', reason: inspection.error.message, code: inspection.error.code };
   if (inspection.motion.status !== 'valid' || !inspection.layout) return { input, status: 'skipped', reason: inspection.error?.message ?? (inspection.motion.status === 'absent' ? '普通照片' : '暂不支持此格式'), code: inspection.error?.code ?? (inspection.motion.status === 'absent' ? 'ORDINARY_PHOTO' : 'UNSUPPORTED_FORMAT') };
+  if (!options.videoOnly && inspection.stillImage && inspection.stillImage.status !== 'ready') {
+    const code = inspection.stillImage.code ?? 'STILL_IMAGE_UNCHECKED';
+    return { input, status: code.startsWith('UNSUPPORTED') ? 'skipped' : 'failed', code,
+      reason: inspection.stillImage.message ?? '需要重新检查静态图布局' };
+  }
   const root = resolve(options.out), base = resolve(options.base);
   if (!inside(base, input)) throw new PhotoError('INVALID_INPUT', '输入文件不在扫描根目录内');
   const rel = relative(base, input), target = resolve(root, rel);

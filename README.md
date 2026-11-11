@@ -4,7 +4,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.7.0. See the [iteration plan](ITERATION.md) for planned improvements.
+A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.8.0. See the [iteration plan](ITERATION.md) for planned improvements.
 
 ## Installation
 
@@ -41,6 +41,8 @@ After building, run `node dist/cli.js` directly. The installed package exposes t
 
 ## Quick video extraction
 
+Quick validates the embedded MP4 independently of still-image rewriting. A verified video can be extracted even when the MP Index cannot be rewritten. Extraction processes files in batches sized by `--jobs`. With `--report`, all destinations are checked before the first write.
+
 ```bash
 oppo-live quick ./photos
 oppo-live quick ./photos/IMG.jpg
@@ -55,6 +57,8 @@ Existing videos are skipped by default without verifying their contents. Use `--
 
 ## Commands
 
+Run `oppo-live --help` to list commands. Use `oppo-live help quick` or `oppo-live quick -h` for command options. For automation, use `oppo-live capabilities --agent` to discover commands and defaults.
+
 ```bash
 oppo-live inspect ./photos --recursive
 oppo-live inspect ./photos --recursive --json
@@ -68,12 +72,12 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 | --- | --- |
 | `-r, --recursive` | Scan subdirectories without following symbolic links |
 | `-o, --out <dir>` | Output directory; defaults to `./oppo-live-output`; extract only |
-| `--on-conflict error\|skip\|rename` | Defaults to error; rename uses the same suffix for JPG, MP4, and optional extra data |
-| `--dry-run` | Preview without creating directories or writing files; extract only |
+| `--on-conflict error\|skip\|rename` | `extract` defaults to `error`, and `quick` defaults to `skip`. Rename uses the same suffix for JPG, MP4, and optional extra data |
+| `--dry-run` | Preview without creating directories or writing files (`quick`, `extract`) |
 | `--recover` | Search in chunks and validate a trailing MP4 when metadata is missing or cannot locate it |
 | `--allow-unknown-vendor` | Deprecated compatibility option; validated motion photos are accepted regardless of vendor |
 | `--jobs <n>` | Concurrency from 1 to 32; defaults to 4 |
-| `--video-compat original\|apple` | Defaults to original; apple safely adjusts eligible HEVC packaging without transcoding |
+| `--video-compat original\|apple` | Applies to quick and extract. Defaults to original. Apple mode safely adjusts eligible HEVC packaging without transcoding |
 | `--save-extra` | Copy data following the Oplus primary video into a matching `.extra.bin` file; extract only |
 | `--report <file>` | Save a versioned JSON report; existing reports are never overwritten; dry-run does not write reports |
 | `--json` | Write the complete JSON result to stdout without interaction or animation |
@@ -83,11 +87,13 @@ Commands run directly when arguments are provided. Running without arguments in 
 
 Directory scanning preserves relative paths: `photos/trip/IMG.jpg` becomes `output/trip/IMG.jpg` and `output/trip/IMG.mp4`. The output directory is automatically excluded. Individual files are identified by content; directory scans filter common image extensions.
 
-Ordinary photos and unsupported layouts are skipped. Validated motion photos are accepted regardless of vendor. Corrupt inputs and output conflicts are reported as failures while other files continue processing. Exit codes: 0 for completion, 1 for file processing failures, 2 for invalid arguments, and 130 for cancellation. Cancellation preserves completed file pairs and cleans up outputs from active tasks.
+Ordinary photos and unsupported layouts are skipped. Validated motion photos are accepted regardless of vendor. Corrupt inputs and conflicts under the error policy are reported as failures while other files continue processing. Exit codes: 0 for completion, 1 for file processing failures, 2 for invalid arguments, and 130 for cancellation. Cancellation preserves completed file pairs and cleans up outputs from active tasks.
 
 Inspection output includes a compact overview and a file results panel showing whether each file is a motion photo, its video format and size, and any inspection failure reason. `--json` and `--agent` remain available for machine-readable results.
 
 ## Supported formats
+
+For a verified motion photo, `stillImage.status` in the JSON inspection result describes still-image export. `ready` means a JPG can be generated. `unavailable` includes a `code` and `message`. Quick mode checks only the video and reports `unchecked`.
 
 An explicit `MotionPhoto="0"` marks a photo as still, even when its video directory is present or `--recover` is enabled.
 

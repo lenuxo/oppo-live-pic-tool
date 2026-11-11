@@ -462,3 +462,21 @@ test('quick 支持与界面文案同名的目录及递归扫描', async t => {
     assert.equal(JSON.parse(run.stdout).summary.planned, 1);
   }
 });
+
+test('视频通过验证但 MP Index 无法重写时，quick 仍可无损导出', async t => {
+  const dir = await workspace(t), input = join(dir, 'live.jpg'), v = video();
+  const j = jpeg(metadata(v.length));
+  const badIndex = Buffer.from([255, 226, 0, 8, 77, 80, 70, 0, 0, 0]);
+  const source = Buffer.concat([j.subarray(0, 2), badIndex, j.subarray(2), v]);
+  await writeFile(input, source);
+  const inspection = await inspectFile(input);
+  assert.equal(inspection.motion.status, 'valid');
+  assert.equal(inspection.stillImage?.status, 'unavailable');
+  const plan = await planExtraction(inspection, { out: join(dir, 'out'), base: dir, conflict: 'error' });
+  assert.ok('status' in plan && plan.status === 'failed');
+  const run = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli.ts', 'quick', input, '--agent'], { encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(JSON.parse(run.stdout).results[0].inspection.stillImage.status, 'unchecked');
+  assert.deepEqual(await readFile(join(dir, 'live.mp4')), v);
+  assert.deepEqual(await readFile(input), source);
+});

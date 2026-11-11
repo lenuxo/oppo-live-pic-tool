@@ -58,6 +58,7 @@ export function capabilities() {
       CANCELLED: { action: 'inspect completed results and output conflicts before retry', automaticRetry: false },
     },
     videoCompatibility: { apple: 'Only non-fragmented single-track hev1 with complete VPS/SPS/PPS and no in-band parameter sets is adjusted; otherwise original video is retained with a structured reason. No transcoding or guarantee of playback on every Apple device.' },
+    stillImage: 'For validated motion photos: ready, unavailable (see code/message), or unchecked for video-only inspection. Quick requires a validated video range.',
     validation: 'container structure only; no runtime image/video decoding',
   };
 }
