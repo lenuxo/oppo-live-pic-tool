@@ -423,3 +423,42 @@ test('容器填充拒绝越界及次级填充；旧版偏移重复冲突不猜�
     assert.notEqual((await inspectFile(input)).motion.status, 'valid');
   }
 });
+
+test('关闭实况优先于残留视频目录，恢复扫描也尊重静态标记', async t => {
+  const dir = await workspace(t), input = join(dir, 'off.jpg'), v = video();
+  const xml = metadata(v.length);
+  for (const flag of ['c:MotionPhoto="0"', '']) {
+    await writeFile(input, Buffer.concat([jpeg(xml.replace('c:MotionPhoto="1"', flag)), v]));
+    for (const recover of [true, false]) {
+      const inspection = await inspectFile(input, { recover });
+      assert.equal(inspection.motion.status, flag ? 'absent' : 'valid');
+    }
+  }
+});
+
+test('报告与媒体路径冲突时整批中止，预演与正式执行一致', async t => {
+  const dir = await workspace(t), v = video();
+  for (const name of ['a.jpg', 'b.jpg']) await writeFile(join(dir, name), Buffer.concat([jpeg(metadata(v.length)), v]));
+  for (const command of ['quick', 'extract']) {
+    const out = command === 'quick' ? dir : join(dir, 'out');
+    for (const preview of [true, false]) {
+      const args = [command, dir, '--agent', '--report', join(out, 'b.mp4')];
+      if (command === 'extract') args.push('--out', out);
+      if (preview) args.push('--dry-run');
+      const run = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli.ts', ...args], { encoding: 'utf8' });
+      assert.equal(run.status, 1);
+      assert.equal(JSON.parse(run.stdout).error.code, 'REPORT_CONFLICT');
+      assert.deepEqual(await readdir(dir), ['a.jpg', 'b.jpg']);
+    }
+  }
+});
+
+test('quick 支持与界面文案同名的目录及递归扫描', async t => {
+  const dir = await workspace(t), name = '原图片所在目录（仅视频）', nested = join(dir, name), v = video();
+  await mkdir(nested); await writeFile(join(nested, 'live.jpg'), Buffer.concat([jpeg(metadata(v.length)), v]));
+  for (const input of [name, '.']) {
+    const run = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), resolve('src/cli.ts'), 'quick', input, '-r', '--dry-run', '--agent'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(JSON.parse(run.stdout).summary.planned, 1);
+  }
+});

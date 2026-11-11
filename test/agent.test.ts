@@ -133,3 +133,21 @@ testWithFixtures('提取取消保留已提交结果；清理失败返回结构�
     } else { assert.equal(data.error.code, 'CANCELLED'); assert.deepEqual(files.sort(), ['l1.jpg', 'l1.mp4']); }
   }
 });
+
+test('报告清理失败时 AI 响应包含实际残留路径和原因', async t => {
+  const dir = await workspace(t), report = join(dir, 'report.json');
+  const script = `
+    import { promises as fs } from 'node:fs';
+    fs.unlink = async () => { throw new Error('test cleanup denied'); };
+    process.argv = [process.execPath, 'src/cli.ts', 'inspect', ${JSON.stringify(dir)}, '--agent', '--report', ${JSON.stringify(report)}];
+    await import('./src/cli.ts');
+  `;
+  const run = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  const data = response(run);
+  assert.equal(data.reportFile.status, 'failed');
+  assert.equal(data.error.code, 'CLEANUP_FAILED');
+  const remaining = (await readdir(dir)).filter(name => name.endsWith('.tmp'));
+  assert.equal(remaining.length, 1);
+  assert.deepEqual(data.error.cleanupIssues, [{ path: join(dir, remaining[0]!), message: 'test cleanup denied' }]);
+});

@@ -4,7 +4,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.6.0. See the [iteration plan](ITERATION.md) for planned improvements.
+A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.7.0. See the [iteration plan](ITERATION.md) for planned improvements.
 
 ## Installation
 
@@ -89,6 +89,8 @@ Inspection output includes a compact overview and a file results panel showing w
 
 ## Supported formats
 
+An explicit `MotionPhoto="0"` marks a photo as still, even when its video directory is present or `--recover` is enabled.
+
 Supports standard XMP container directories containing a primary JPEG, an optional GainMap JPEG, and a MotionPhoto MP4, as well as the Oplus v2 `VideoLength` field. XML attributes are recognized by namespace rather than fixed prefixes. JPEG marker traversal supports baseline and progressive JPEGs.
 
 When an Oplus container includes data after its primary MP4, extraction uses `VideoLength` to locate the structurally validated primary video. Extra data is omitted by default; `--save-extra` saves it byte-for-byte as `.extra.bin`. Reports include the ranges of the primary video and extra data. The original file is preserved. The meaning of proprietary extra data is not yet established.
@@ -146,6 +148,8 @@ Exit codes remain 0 for completion, 1 for partial or total processing failure, 2
 Extraction output summarizes counts and groups skip reasons instead of listing routine per-file analysis. It shows up to five failures and five cleanup issues, and up to three plans during dry-run. Full details remain available through `--json` or `--report`.
 
 ## Reports and error handling
+
+If the report path matches a media output, `quick` and `extract` stop before writing any files and return `REPORT_CONFLICT`. Dry runs use the same check. If report cleanup fails, agent responses list each remaining path and its error message in `error.cleanupIssues`.
 
 `--json` and `--report` share a structure containing `schemaVersion: 1`, tool version, generation time, command, summary, and per-file results. Extraction reports also include origin evidence, primary video and extra-data ranges, and warnings. Internal patch buffers and file fingerprints are excluded.
 

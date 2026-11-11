@@ -17,6 +17,10 @@ export async function inspectFile(input: string, options: { recover?: boolean; s
     if (jpeg.make) result.vendor = { value: /^oppo(?:\b|$)/i.test(jpeg.make) ? 'oppo' : 'other', evidence: [`EXIF Make: ${jpeg.make}`] };
     if (jpeg.model) result.vendor.evidence.push(`EXIF Model: ${jpeg.model}`);
     const xmp = parseXmp(jpeg.segments);
+    if (xmp.motionPhoto === false || (xmp.motionPhoto === undefined && !xmp.items.length && xmp.microVideo === false)) {
+      await r.assertUnchanged();
+      return result;
+    }
     if (xmp.extended) throw new PhotoError('UNSUPPORTED_LAYOUT', '扩展 XMP 暂不支持拆分');
     if (xmp.oplusVersion === '2') {
       result.profile = 'oplus-v2';

@@ -4,7 +4,7 @@
 
 [English](README.md) | 简体中文
 
-Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.6.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
+Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.7.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
 
 ## 安装
 
@@ -89,6 +89,8 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 
 ## 格式支持
 
+显式标记 `MotionPhoto="0"` 的照片按静态图处理，即使其中保留视频目录或启用了 `--recover`。
+
 支持标准 XMP 容器目录中的主 JPEG、可选 GainMap JPEG、MotionPhoto MP4，以及 Oplus v2 的 `VideoLength` 字段。按 XML 命名空间识别属性，不依赖固定前缀。支持普通 JPEG 和渐进 JPEG 的标记遍历。
 
 Oplus 容器在主 MP4 后可能包含附加数据。工具按 `VideoLength` 提取经过结构验证的主 MP4，默认不导出附加数据；使用 `--save-extra` 可逐字节另存为 `.extra.bin`。报告包含主视频和附加内容的范围，原文件完整保留。这些私有附加内容的业务含义尚未确定。
@@ -147,6 +149,8 @@ oppo-live extract ./photos --out ./output --agent --report ./agent-report.json
 提取结果仅汇总数量及跳过原因，不逐张列举常规分析信息。最多展示 5 个失败文件和 5 个清理残留；预演最多展示 3 个提取计划。完整详情可通过 `--json` 或 `--report` 查看。
 
 ## 报告与异常处理
+
+报告路径与媒体输出路径相同时，`quick` 和 `extract` 会在写入前中止整批处理并返回 `REPORT_CONFLICT`。预演执行相同检查。报告清理失败时，机器响应通过 `error.cleanupIssues` 返回每个残留文件的路径和失败原因。
 
 `--json` 和 `--report` 使用相同结构：`schemaVersion: 1`、工具版本、生成时间、命令、汇总和逐文件结果。提取报告还包含来源证据、主视频/附加数据范围和警告，不包含内部补丁 Buffer 或文件指纹。
 

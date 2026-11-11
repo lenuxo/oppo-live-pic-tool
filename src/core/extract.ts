@@ -12,7 +12,7 @@ export interface ExtractionPlan { inspection: Inspection; image?: string; video:
 async function exists(path: string): Promise<boolean> {
   try { await lstat(path); return true; } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
 }
-export async function planExtraction(inspection: Inspection, options: ExtractOptions, reserved = new Set<string>()): Promise<ExtractionPlan | ExtractionResult> {
+export async function planExtraction(inspection: Inspection, options: ExtractOptions, reserved = new Set<string>(), reportPath?: string): Promise<ExtractionPlan | ExtractionResult> {
   const input = inspection.input;
   if (inspection.error && inspection.motion.status === 'invalid') return { input, status: 'failed', reason: inspection.error.message, code: inspection.error.code };
   if (inspection.motion.status !== 'valid' || !inspection.layout) return { input, status: 'skipped', reason: inspection.error?.message ?? (inspection.motion.status === 'absent' ? '普通照片' : '暂不支持此格式'), code: inspection.error?.code ?? (inspection.motion.status === 'absent' ? 'ORDINARY_PHOTO' : 'UNSUPPORTED_FORMAT') };
@@ -27,7 +27,16 @@ export async function planExtraction(inspection: Inspection, options: ExtractOpt
   let extra = !options.videoOnly && options.saveExtra && inspection.motion.extra ? `${stem}.extra.bin` : undefined;
   if (resolve(video) === resolve(input)) throw new PhotoError('INVALID_OUTPUT', '输出视频不能与输入文件相同');
   if (image && resolve(image) === resolve(input)) throw new PhotoError('INVALID_OUTPUT', '输出图片不能与输入文件相同');
-  for (let suffix = 1; (image && reserved.has(image)) || reserved.has(video) || (extra && reserved.has(extra)) || (image && await exists(image)) || await exists(video) || (extra && await exists(extra)); suffix++) {
+  for (let suffix = 1; ; suffix++) {
+    if (reportPath && [image, video, extra].includes(reportPath)) {
+      throw new PhotoError('REPORT_CONFLICT', '报告路径与媒体输出冲突，请使用其他报告路径');
+    }
+    const targets = [image, video, extra].filter((path): path is string => !!path);
+    let conflict = false;
+    for (const path of targets) {
+      if (reserved.has(path) || await exists(path)) { conflict = true; break; }
+    }
+    if (!conflict) break;
     if (options.conflict === 'skip') return { input, status: 'skipped', reason: '输出文件已存在', code: 'OUTPUT_CONFLICT' };
     if (options.conflict === 'error') return { input, status: 'failed', reason: '输出文件已存在', code: 'OUTPUT_CONFLICT' };
     if (image) image = `${stem}-${suffix}.jpg`; video = `${stem}-${suffix}.mp4`;

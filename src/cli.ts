@@ -61,10 +61,10 @@ async function run(command: 'inspect' | 'extract' | 'quick', input: string, opti
   response = agentResponse(command, options.requestId);
   const reporter = currentReporter = new Reporter(machine || !!options.json, options.color === false);
   let out = resolve(options.out ?? './oppo-live-output');
-  if (options.report && !options.dryRun) await assertReportAvailable(options.report);
+  if (options.report) await assertReportAvailable(options.report);
   reporter.intro(resolve(input), command === 'quick' ? '原图片所在目录（仅视频）' : command === 'extract' ? out : undefined, alreadyStarted);
   reporter.start('扫描图片');
-  const { files, base } = await scanFiles(input, { recursive: options.recursive, exclude: command === 'quick' ? '原图片所在目录（仅视频）' : command === 'extract' ? out : undefined, signal: controller.signal });
+  const { files, base } = await scanFiles(input, { recursive: options.recursive, exclude: command === 'extract' ? out : undefined, signal: controller.signal });
   if (command === 'quick') out = base;
   knownFiles = files;
   reporter.stop(`扫描完成：${files.length} 张图片`);
@@ -82,14 +82,15 @@ async function run(command: 'inspect' | 'extract' | 'quick', input: string, opti
     if (inspections.some(i => i.motion.status === 'invalid')) process.exitCode = 1;
     return;
   }
-  const reserved = new Set<string>(options.report && !options.dryRun ? [resolve(options.report)] : []);
+  const reserved = new Set<string>();
+  const reportPath = options.report ? resolve(options.report) : undefined;
   const plans: (ExtractionPlan | ExtractionResult)[] = [];
   for (const inspection of inspections) {
     controller.signal.throwIfAborted();
     try {
-      plans.push(await planExtraction(inspection, { out, base, videoOnly: command === 'quick', conflict: options.onConflict ?? (command === 'quick' ? 'skip' : 'error'), allowUnknownVendor: options.allowUnknownVendor, saveExtra: options.saveExtra, videoCompat: options.videoCompat, dryRun: options.dryRun, signal: controller.signal }, reserved));
+      plans.push(await planExtraction(inspection, { out, base, videoOnly: command === 'quick', conflict: options.onConflict ?? (command === 'quick' ? 'skip' : 'error'), allowUnknownVendor: options.allowUnknownVendor, saveExtra: options.saveExtra, videoCompat: options.videoCompat, dryRun: options.dryRun, signal: controller.signal }, reserved, reportPath));
     } catch (e) {
-      if (controller.signal.aborted) throw e;
+      if (controller.signal.aborted || (e instanceof PhotoError && e.code === 'REPORT_CONFLICT')) throw e;
       plans.push({ input: inspection.input, status: 'failed', code: e instanceof PhotoError ? e.code : (e as NodeJS.ErrnoException).code ?? 'PLAN_ERROR', reason: e instanceof Error ? e.message : String(e) });
     }
   }
@@ -131,7 +132,7 @@ async function persistAgent(options: RunOptions) {
   catch (e) {
     if (controller.signal.aborted) throw e;
     response.reportFile.status = 'failed';
-    response.error = { code: e instanceof PhotoError ? e.code : 'REPORT_WRITE_ERROR', message: e instanceof Error ? e.message : String(e) };
+    response.error = { code: e instanceof PhotoError ? e.code : 'REPORT_WRITE_ERROR', message: e instanceof Error ? e.message : String(e), ...((e instanceof PhotoError) ? e.details : {}) };
     response.status = response.status === 'failed' || !response.summary.processed ? 'failed' : 'partial';
     process.exitCode = 1;
   }
