@@ -4,7 +4,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.8.0. See the [iteration plan](ITERATION.md) for planned improvements.
+A Node.js CLI for inspecting compatible JPEG motion photos, including OPPO/Oplus files, and splitting them into a still JPG and the original MP4 without re-encoding. Built with Commander and Clack, it provides guided interaction, progress display, batch processing, and JSON reports. Current version: 0.8.1. See the [iteration plan](ITERATION.md) for planned improvements.
 
 ## Installation
 
@@ -44,6 +44,7 @@ After building, run `node dist/cli.js` directly. The installed package exposes t
 Quick validates the embedded MP4 independently of still-image rewriting. A verified video can be extracted even when the MP Index cannot be rewritten. Extraction processes files in batches sized by `--jobs`. With `--report`, all destinations are checked before the first write.
 
 ```bash
+oppo-live quick                  # current directory
 oppo-live quick ./photos
 oppo-live quick ./photos/IMG.jpg
 oppo-live quick ./photos --recursive
@@ -53,7 +54,13 @@ oppo-live quick ./photos --dry-run --agent
 
 `quick` is a preset that writes only videos beside their source images: `photos/trip/IMG.jpg` → `photos/trip/IMG.mp4`. Source images are never modified, and no still JPG or extra-data file is created. Directories are scanned at the top level by default; use `--recursive` for subdirectories. Ordinary photos and unsupported formats are skipped.
 
-Existing videos are skipped by default without verifying their contents. Use `--on-conflict error` to report conflicts or `--on-conflict rename` to save a numbered video. The preset preserves original video bytes unless `--video-compat apple` is explicitly selected. It supports `--recover`, `--jobs`, `--dry-run`, `--json`, `--agent`, and an optional `--report`. It does not accept `--out` or `--save-extra`.
+You can run `quick` again after adding photos or deleting an extracted video. It rescans the images and writes only missing MP4s. With the default conflict policy, even simultaneous runs leave an existing file untouched. The summary counts same-name skips separately from ordinary photos. A skipped file may be unrelated or incomplete because the tool checks its name only.
+
+Use `--on-conflict error` to flag a collision. Use `--on-conflict rename` on a specific photo to create a numbered copy each time. This also lets you request an Apple-compatible copy when the original MP4 already exists.
+
+The default video mode is `original`. To remember a preference, launch `oppo-live` in a terminal, select quick extraction, choose the video mode, and confirm saving it. Future human-readable quick runs use this setting. An explicit `--video-compat` overrides it for one run. For reproducible automation, `--agent` and `--json` use `original` unless you pass `--video-compat apple`.
+
+Quick also supports `--recover`, `--jobs`, `--dry-run`, and `--report`.
 
 ## Commands
 
@@ -77,7 +84,7 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 | `--recover` | Search in chunks and validate a trailing MP4 when metadata is missing or cannot locate it |
 | `--allow-unknown-vendor` | Deprecated compatibility option; validated motion photos are accepted regardless of vendor |
 | `--jobs <n>` | Concurrency from 1 to 32; defaults to 4 |
-| `--video-compat original\|apple` | Applies to quick and extract. Defaults to original. Apple mode safely adjusts eligible HEVC packaging without transcoding |
+| `--video-compat original\|apple` | Defaults to original. Human-readable quick runs honor the saved preference. Apple mode safely adjusts eligible HEVC packaging without transcoding |
 | `--save-extra` | Copy data following the Oplus primary video into a matching `.extra.bin` file; extract only |
 | `--report <file>` | Save a versioned JSON report; existing reports are never overwritten; dry-run does not write reports |
 | `--json` | Write the complete JSON result to stdout without interaction or animation |

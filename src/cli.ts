@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { scanFiles } from './io/scanner.js';
 import { inspectFile } from './core/inspect.js';
 import { planExtraction, executeExtraction, type ExtractionPlan } from './core/extract.js';
+import { readQuickVideoMode } from './quick-preference.js';
 import { VERSION } from './version.js';
 import { PhotoError } from './core/types.js';
 import { publicInspection, inspectionReport, extractionReport, assertReportAvailable, saveReport, type ReportOutput } from './core/report.js';
@@ -60,6 +61,9 @@ async function run(command: 'inspect' | 'extract' | 'quick', input: string, opti
   machine = !!options.agent;
   response = agentResponse(command, options.requestId);
   const reporter = currentReporter = new Reporter(machine || !!options.json, options.color === false);
+  if (command === 'quick' && !options.videoCompat && !machine && !options.json) {
+    options.videoCompat = await readQuickVideoMode();
+  }
   let out = resolve(options.out ?? './oppo-live-output');
   if (options.report) await assertReportAvailable(options.report);
   reporter.intro(resolve(input), command === 'quick' ? '原图片所在目录（仅视频）' : command === 'extract' ? out : undefined, alreadyStarted);
@@ -125,7 +129,7 @@ async function run(command: 'inspect' | 'extract' | 'quick', input: string, opti
   const inspections = files.map(file => completedInspections.get(file)!);
   const results = files.map(file => completedResults.get(file)!);
   if (machine) { snapshot(); await persistAgent(options); }
-  else { const report = await persist(extractionReport(results, inspections, command), options); reporter.summary(results, inspections, out, report); }
+  else { const report = await persist(extractionReport(results, inspections, command), options); reporter.summary(results, inspections, out, report, options); }
   if (results.some(r => r.status === 'failed')) process.exitCode = 1;
 }
 async function persist(report: ReportOutput, options: RunOptions): Promise<ReportOutput> {
@@ -157,7 +161,9 @@ async function persistAgent(options: RunOptions) {
 const program = new Command().name('oppo-live').description('检查 JPEG 实况照片，提取原图旁的 MP4 或另存 JPG 和 MP4').version(VERSION).option('--agent', '机器模式：统一 JSON 响应，禁止交互').option('--request-id <id>', '原样返回调用方请求标识').exitOverride();
 program.configureOutput({ writeOut: text => { if (machine) information += text; else process.stdout.write(text); }, outputError: (message, write) => { if (!machine && !process.argv.includes('--json')) write(message); } });
 function common(command: Command) {
-  return command.argument('<input>', '图片文件或目录').option('-r, --recursive', '扫描子目录（默认只扫描当前目录）')
+  if (command.name() === 'quick') command.argument('[input]', '图片文件或目录', '.');
+  else command.argument('<input>', '图片文件或目录');
+  return command.option('-r, --recursive', '扫描子目录（默认只扫描当前目录）')
     .option('--recover', '元数据定位失败时搜索附加 MP4')
     .option('--report <file>', '保存 JSON 报告，请使用与媒体输出不同的新路径')
     .option('--json', '输出 JSON 报告，关闭交互和动画')
@@ -177,9 +183,9 @@ common(program.command('extract').description('将静态 JPG 和 MP4 保存到�
   .action((input, _options, command) => run('extract', input, command.optsWithGlobals()));
 common(program.command('quick').description('将已验证的 MP4 保存到原图片旁，默认跳过已有视频'))
   .addOption(new Option('--on-conflict <strategy>', '已有视频的处理方式（skip 跳过、rename 编号、error 报错）').choices(['error', 'skip', 'rename']).default('skip'))
-  .addOption(new Option('--video-compat <mode>', '视频输出：original 保留原视频；apple 安全调整 HEVC 封装').choices(['original', 'apple']).default('original'))
+  .addOption(new Option('--video-compat <mode>', '本次视频模式（默认 original；普通模式可在交互引导中记住偏好）').choices(['original', 'apple']))
   .option('--dry-run', '仅预演，不写文件')
-  .addHelpText('after', '\n示例  oppo-live quick ./photos -r --dry-run\n机器调用可加 --agent 和 --request-id <id>。')
+  .addHelpText('after', '\n示例  oppo-live quick  （处理当前目录）\n      oppo-live quick ./photos -r --dry-run\n机器调用可加 --agent 和 --request-id <id>。')
   .action((input, _options, command) => run('quick', input, command.optsWithGlobals()));
 program.command('capabilities').description('以 JSON 列出命令、参数、支持格式和机器响应约定').addHelpText('after', '\n示例  oppo-live capabilities --agent').action((_options, command) => {
   dispatched = true;

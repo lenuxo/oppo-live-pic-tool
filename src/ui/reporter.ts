@@ -3,6 +3,7 @@ import { basename, relative } from 'node:path';
 import { inspectionReport, extractionReport, type ReportOutput } from '../core/report.js';
 export { publicInspection } from '../core/report.js';
 import type { ExtractionResult, Inspection } from '../core/types.js';
+import type { RunOptions } from '../cli-options.js';
 export function safeText(text: string): string { return text.replace(/[\x00-\x1f\x7f-\x9f]/g, '?'); }
 export class Reporter {
   private active?: ReturnType<typeof p.progress> | ReturnType<typeof p.spinner>;
@@ -73,13 +74,31 @@ export class Reporter {
     if (this.pretty) (error ? p.log.error : p.log.warn)(safeText(message), { output: process.stderr });
     else process.stderr.write(`  ${safeText(message)}\n`);
   }
-  summary(results: ExtractionResult[], inspections: Inspection[], out: string, report: ReportOutput = extractionReport(results, inspections)) {
+  summary(results: ExtractionResult[], inspections: Inspection[], out: string, report: ReportOutput = extractionReport(results, inspections), options: Pick<RunOptions, 'videoCompat' | 'dryRun'> = {}) {
     const counts = { extracted: 0, planned: 0, skipped: 0, failed: 0 };
     for (const r of results) counts[r.status]++;
     if (this.json) { process.stdout.write(`${JSON.stringify(report, null, 2)}\n`); return; }
-    const extraCount = results.filter(r => r.extra && ['extracted', 'planned'].includes(r.status)).length;
-    const text = `成功提取  ${counts.extracted}\n计划提取  ${counts.planned}\n跳过      ${counts.skipped}\n失败      ${counts.failed}${extraCount ? `\n另存附加  ${extraCount}` : ''}`;
+    const quick = report.command === 'quick';
+    let text: string;
+    if (quick) {
+      const skipped = results.filter(r => r.status === 'skipped');
+      const ordinary = skipped.filter(r => r.code === 'ORDINARY_PHOTO').length;
+      const conflicts = skipped.filter(r => r.code === 'OUTPUT_CONFLICT').length;
+      const unsupported = skipped.length - ordinary - conflicts;
+      const parts = [`扫描 ${results.length} 张`, options.dryRun ? `计划提取 ${counts.planned} 个视频` : `新增 ${counts.extracted} 个视频`];
+      if (ordinary) parts.push(`静态照片 ${ordinary} 张`);
+      if (conflicts) parts.push(`同名跳过 ${conflicts} 个`);
+      if (unsupported) parts.push(`暂不支持 ${unsupported} 张`);
+      if (counts.failed) parts.push(`失败 ${counts.failed} 张`);
+      text = parts.join(' · ');
+    } else {
+      const extraCount = results.filter(r => r.extra && ['extracted', 'planned'].includes(r.status)).length;
+      text = `成功提取  ${counts.extracted}\n计划提取  ${counts.planned}\n跳过      ${counts.skipped}\n失败      ${counts.failed}${extraCount ? `\n另存附加  ${extraCount}` : ''}`;
+    }
     if (this.pretty) p.note(text, '处理结果', { output: process.stderr }); else process.stdout.write(`${text}\n`);
+    if (quick && options.videoCompat === 'apple' && results.some(r => r.status === 'skipped' && r.code === 'OUTPUT_CONFLICT')) {
+      this.note('同名视频已跳过，本次未调整其兼容性。需要另存时，对目标照片使用 --on-conflict rename。');
+    }
     const compatibility = results.filter(r => r.status === 'extracted' || r.status === 'planned').map(r => r.videoCompatibility).filter(r => !!r);
     if (compatibility.length) {
       const adjusted = compatibility.filter(r => r.status === 'adjusted').length;
@@ -95,16 +114,18 @@ export class Reporter {
       if (this.pretty) p.log.step(message, { output: process.stderr }); else process.stdout.write(`${message}\n`);
     }
     if (plans.length > 3) this.note(`另有 ${plans.length - 3} 个提取计划，使用 --json 查看完整路径`);
-    const skipped = new Map<string, number>();
-    for (const r of results.filter(r => r.status === 'skipped')) {
-      const reason = r.reason ?? '跳过';
-      skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
-    }
-    if (skipped.size) {
-      const reasons = [...skipped].slice(0, 5).map(([reason, count]) => `${safeText(reason)} ${count} 张`);
-      if (skipped.size > 5) reasons.push(`另有 ${skipped.size - 5} 类原因`);
-      const message = `跳过原因：${reasons.join(' · ')}`;
-      if (this.pretty) p.log.info(message, { output: process.stderr }); else process.stdout.write(`${message}\n`);
+    if (!quick) {
+      const skipped = new Map<string, number>();
+      for (const r of results.filter(r => r.status === 'skipped')) {
+        const reason = r.reason ?? '跳过';
+        skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
+      }
+      if (skipped.size) {
+        const reasons = [...skipped].slice(0, 5).map(([reason, count]) => `${safeText(reason)} ${count} 张`);
+        if (skipped.size > 5) reasons.push(`另有 ${skipped.size - 5} 类原因`);
+        const message = `跳过原因：${reasons.join(' · ')}`;
+        if (this.pretty) p.log.info(message, { output: process.stderr }); else process.stdout.write(`${message}\n`);
+      }
     }
     const failed = results.filter(r => r.status === 'failed');
     for (const r of failed.slice(0, 5)) this.note(`${basename(r.input)}：${r.reason ?? '处理失败'}`, true);
@@ -112,10 +133,15 @@ export class Reporter {
     const cleanup = results.flatMap(r => r.cleanupIssues ?? []);
     for (const issue of cleanup.slice(0, 5)) this.note(`未能清理 ${issue.path}：${issue.message}`, true);
     if (cleanup.length > 5) this.note(`另有 ${cleanup.length - 5} 个清理残留，请查看 JSON 报告中的 cleanupIssues`, true);
+    if (quick) {
+      this.reportStatus(report);
+      if (this.pretty) p.outro(options.dryRun ? '预演完成' : '处理完成', { output: process.stderr });
+      return;
+    }
     const hint = '完整详情：--json 或 --report <file>';
     if (this.pretty) p.log.info(hint, { output: process.stderr }); else process.stdout.write(`${hint}\n`);
     this.reportStatus(report);
-    const end = counts.planned ? '预演完成，未写入文件' : counts.extracted ? report.command === 'quick' ? '视频已保存在原图片旁边' : `文件已保存至 ${safeText(out)}` : '处理完成，没有新文件';
+    const end = counts.planned ? '预演完成，未写入文件' : counts.extracted ? `文件已保存至 ${safeText(out)}` : '处理完成，没有新文件';
     if (this.pretty) p.outro(end, { output: process.stderr }); else process.stdout.write(`${end}\n`);
   }
 }

@@ -4,7 +4,7 @@
 
 [English](README.md) | 简体中文
 
-Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.8.0；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
+Node.js CLI：检查兼容的 JPEG 实况照片（包括 OPPO/Oplus），无损拆分为静态 JPG 和原始 MP4。使用 Commander + Clack，提供交互引导、进度显示、批量处理和 JSON 报告。当前版本 0.8.1；[迭代计划](ITERATION.md) 记录本轮审查与后续范围。
 
 ## 安装
 
@@ -44,6 +44,7 @@ npm run dev -- extract ./photos --out ./output
 快速模式独立验证内嵌 MP4。即使静态图的 MP Index 无法重写，只要视频范围和结构通过检查，仍可提取视频。提取时按 `--jobs` 分批处理。指定 `--report` 时，先完成整批输出路径检查再写文件。
 
 ```bash
+oppo-live quick                  # 处理当前目录
 oppo-live quick ./photos
 oppo-live quick ./photos/IMG.jpg
 oppo-live quick ./photos --recursive
@@ -53,7 +54,13 @@ oppo-live quick ./photos --dry-run --agent
 
 `quick` 是仅输出视频的预设：`photos/trip/IMG.jpg` → `photos/trip/IMG.mp4`，直接保存到原图片旁边。源图片不修改，不生成静态 JPG 或附加数据文件。目录默认只扫描当前层级，使用 `--recursive` 扫描子目录。普通照片和不支持的格式自动跳过。
 
-已有视频默认跳过，不验证已有文件内容；可用 `--on-conflict error` 报告冲突，或用 `--on-conflict rename` 保存为带编号的视频。默认逐字节保留原视频，仅显式选择 `--video-compat apple` 时尝试兼容调整。支持 `--recover`、`--jobs`、`--dry-run`、`--json`、`--agent` 及可选 `--report`，不接受 `--out` 或 `--save-extra`。
+追加照片或删除某个已提取的视频后，可以直接重跑 `quick`。它会重新扫描图片，只补齐缺少的 MP4。默认策略下，即使两个命令同时运行，也会保留同名文件。摘要分别统计静态照片和同名跳过的数量。同名判断只检查路径，已有文件也可能是无关视频或未完成的副本。
+
+需要把同名冲突视为错误时使用 `--on-conflict error`。已有 MP4 时，想额外保留 Apple 兼容版，可对具体照片使用 `--video-compat apple --on-conflict rename`。每次使用 `rename` 重跑都会另存一个编号副本。
+
+视频模式默认为 `original`。如需记住偏好，在终端运行 `oppo-live`，选择「快速提取视频」，更改视频输出方式并确认记住选择。之后直接运行 `oppo-live quick` 就会使用该偏好，显式传入 `--video-compat` 可覆盖本次选择。为便于自动化复现，`--agent` 和 `--json` 默认使用 `original`，需要 Apple 模式时请显式传入 `--video-compat apple`。
+
+快速模式也支持 `--recover`、`--jobs`、`--dry-run` 和可选的 `--report`。
 
 ## 命令
 
@@ -77,7 +84,7 @@ oppo-live extract ./photos --out ./output --save-extra --report ./report.json
 | `--recover` | 元数据定位失败或缺失时，分块搜索并验证尾部 MP4 |
 | `--allow-unknown-vendor` | 旧版兼容参数；有效实况已默认允许提取，不限制厂商 |
 | `--jobs <n>` | 并发 1–32，默认 4 |
-| `--video-compat original\|apple` | 适用于 quick 和 extract，默认 original。apple 在安全条件下调整 HEVC 封装，不转码 |
+| `--video-compat original\|apple` | 默认 original，普通 quick 命令使用已保存的偏好。apple 在安全条件下调整 HEVC 封装，不转码 |
 | `--save-extra` | 将 Oplus 主视频后的附加内容逐字节另存为同名 `.extra.bin`，仅 extract |
 | `--report <file>` | 保存版本化 JSON 报告；已有报告不覆盖；dry-run 不写报告 |
 | `--json` | stdout 输出完整 JSON；不显示交互或动画 |

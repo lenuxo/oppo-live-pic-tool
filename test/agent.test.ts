@@ -21,7 +21,11 @@ async function workspace(t: { after: (f: () => Promise<void>) => void }) { const
 test('能力发现、全局 flag 前后位置、请求标识和无动画', () => {
   for (const args of [['capabilities', '--agent', '--request-id', 'req-001'], ['--agent', '--request-id=req-001', 'capabilities']]) {
     const run = cli(args), data = response(run); assert.equal(run.status, 0); assert.equal(data.status, 'success'); assert.equal(data.requestId, 'req-001');
-    assert.equal(data.capabilities.commands.find((c: { name: string }) => c.name === 'quick').defaults.onConflict, 'skip');
+    const quick = data.capabilities.commands.find((c: { name: string }) => c.name === 'quick');
+    assert.equal(quick.defaults.onConflict, 'skip');
+    assert.equal(quick.defaults.input, '.');
+    assert.deepEqual(quick.requiredArguments, []);
+    assert.deepEqual(quick.optionalArguments, ['input']);
     assert.ok(data.capabilities.responseSchema.resultStatuses.quick.includes('extracted'));
     assert.equal(data.capabilities.optionSchema['--jobs'].type, 'integer');
     assert.equal(data.capabilities.optionSchema['--video-compat'].default, 'original');

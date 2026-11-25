@@ -23,7 +23,7 @@ export function capabilities() {
     commands: [
       { name: 'capabilities', requiredArguments: [], writesFiles: false },
       { name: 'inspect', requiredArguments: ['input'], writesFiles: 'only-with-report', options: ['--recursive', '--recover', '--jobs', '--report'] },
-      { name: 'quick', requiredArguments: ['input'], writesFiles: true, dryRunWritesFiles: false, options: ['--recursive', '--recover', '--jobs', '--on-conflict', '--video-compat', '--dry-run', '--report'], defaults: { onConflict: 'skip', videoCompat: 'original', recursive: false }, output: 'MP4 only, beside each source image; source images are unchanged; existing videos are skipped without verifying their contents' },
+      { name: 'quick', requiredArguments: [], optionalArguments: ['input'], writesFiles: true, dryRunWritesFiles: false, options: ['--recursive', '--recover', '--jobs', '--on-conflict', '--video-compat', '--dry-run', '--report'], defaults: { input: '.', onConflict: 'skip', videoCompat: 'original', recursive: false }, output: 'MP4 only, beside each source image; source images are unchanged; existing videos are skipped without verifying their contents' },
       { name: 'extract', requiredArguments: ['input'], writesFiles: true, dryRunWritesFiles: false, options: ['--recursive', '--recover', '--jobs', '--out', '--on-conflict', '--allow-unknown-vendor', '--save-extra', '--video-compat', '--dry-run', '--report'] },
     ],
     globalOptions: ['--agent', '--request-id', '--help', '--version'],

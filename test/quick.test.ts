@@ -1,10 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, readdir, realpath, rm, stat, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import { promisify } from 'node:util';
+import { execFile, spawnSync } from 'node:child_process';
 import { inspectFile, planExtraction, executeExtraction } from '../src/index.js';
+import { saveQuickVideoMode } from '../src/quick-preference.js';
 import { Reader } from '../src/io/reader.js';
 function box(type: string, data: Buffer) { const h = Buffer.alloc(8); h.writeUInt32BE(data.length + 8); h.write(type, 4); return Buffer.concat([h, data]); }
 const handler = Buffer.alloc(24); handler.write('vide', 8);
@@ -15,7 +19,8 @@ function jpeg(live = true) {
   const image = Buffer.concat([Buffer.from([255, 216]), app, body, Buffer.from([255, 192, 0, 11, 8, 0, 1, 0, 1, 1, 1, 0x11, 0, 255, 218, 0, 8, 1, 1, 0, 0, 63, 0, 42, 255, 217])]);
   return live ? Buffer.concat([image, video]) : image;
 }
-const cli = (args: string[]) => spawnSync(process.execPath, ['--import', 'tsx', 'src/cli.ts', ...args], { encoding: 'utf8', timeout: 15000 });
+const cliArgs = ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL('../src/cli.ts', import.meta.url))];
+const cli = (args: string[], cwd = process.cwd()) => spawnSync(process.execPath, [...cliArgs, ...args], { cwd, encoding: 'utf8', timeout: 15000 });
 async function workspace(t: { after: (f: () => Promise<void>) => void }) { const dir = await mkdtemp(join(tmpdir(), 'oppo-quick-')); t.after(() => rm(dir, { force: true, recursive: true })); return dir; }
 
 test('quick 单文件：仅同目录视频，原图字节不变；重复运行跳过，不覆盖视频', async t => {
@@ -108,4 +113,79 @@ test('quick 取消的机器响应正确列出未完成文件，并清理视频�
   const data = JSON.parse(run.stdout); assert.equal(data.command, 'quick'); assert.equal(data.status, 'cancelled');
   assert.equal(data.summary.extracted, 0); assert.equal(data.summary.pending, 1); assert.equal(data.results[0].code, 'PENDING');
   assert.deepEqual(await readdir(dir), ['live.jpg']); assert.deepEqual(await readFile(file), jpeg());
+});
+
+test('重跑当前目录、追加照片和补回删除的视频，只写缺少的输出', async t => {
+  const dir = await workspace(t);
+  await writeFile(join(dir, 'first.jpg'), jpeg());
+  await writeFile(join(dir, 'still.jpg'), jpeg(false));
+  const first = join(dir, 'first.mp4');
+  assert.equal(cli(['quick', '--agent'], dir).status, 0);
+  await utimes(first, 100000, 100000);
+  const mtime = (await stat(first)).mtimeMs;
+  const repeat = cli(['quick', '--video-compat', 'apple'], dir);
+  assert.equal(repeat.status, 0, repeat.stderr);
+  assert.match(repeat.stdout, /扫描 2 张 · 新增 0 个视频 · 静态照片 1 张 · 同名跳过 1 个/);
+  assert.match(repeat.stderr, /未调整其兼容性/);
+  await writeFile(join(dir, 'second.jpg'), jpeg());
+  const added = JSON.parse(cli(['quick', '--agent'], dir).stdout);
+  assert.equal(added.summary.extracted, 1);
+  assert.equal(added.results.find((r: {code: string}) => r.code === 'EXTRACTED').video, await realpath(join(dir, 'second.mp4')));
+  assert.equal((await stat(first)).mtimeMs, mtime);
+  await rm(join(dir, 'second.mp4'));
+  const repaired = JSON.parse(cli(['quick', '--agent'], dir).stdout);
+  assert.equal(repaired.summary.extracted, 1);
+  assert.deepEqual(await readFile(join(dir, 'second.mp4')), video);
+  assert.deepEqual(await readFile(first), video);
+  assert.equal((await stat(first)).mtimeMs, mtime);
+});
+
+test('两个独立 quick 进程同时处理同一目录，总共只生成一个视频', async t => {
+  const dir = await workspace(t);
+  await writeFile(join(dir, 'live.jpg'), jpeg());
+  const run = () => promisify(execFile)(process.execPath, [...cliArgs, 'quick', '--agent'], { cwd: dir, timeout: 15000 });
+  const reports = (await Promise.all([run(), run()])).map(r => JSON.parse(r.stdout));
+  assert.deepEqual(reports.map(r => r.results[0].code).sort(), ['EXTRACTED', 'OUTPUT_CONFLICT']);
+  assert.ok(reports.every(r => r.status === 'success' && r.summary.failed === 0));
+  assert.deepEqual(await readdir(dir), ['live.jpg', 'live.mp4']);
+  assert.deepEqual(await readFile(join(dir, 'live.mp4')), video);
+});
+
+test('发布阶段竞争在硬链接与独占复制下都遵循 skip 策略', async t => {
+  for (const fallback of [false, true]) {
+    const dir = await workspace(t), input = join(dir, 'photo.jpg');
+    await writeFile(input, jpeg());
+    const plan = await planExtraction(await inspectFile(input), { out: dir, base: dir, videoOnly: true, conflict: 'skip' });
+    assert.ok('inspection' in plan);
+    if (fallback) t.mock.method(fs, 'link', async () => { throw Object.assign(new Error('unsupported'), { code: 'ENOTSUP' }); });
+    const results = await Promise.all([executeExtraction(plan), executeExtraction(plan)]);
+    assert.deepEqual(results.map(r => r.status).sort(), ['extracted', 'skipped']);
+    assert.equal(results.find(r => r.status === 'skipped')?.code, 'OUTPUT_CONFLICT');
+    assert.deepEqual(await readdir(dir), ['photo.jpg', 'photo.mp4']);
+    assert.deepEqual(await readFile(plan.video), video);
+  }
+});
+
+test('quick 的个人视频偏好可保存和覆盖，机器模式默认保留原视频', async t => {
+  const dir = await workspace(t);
+  const config = join(dir, 'config');
+  const previous = process.env.XDG_CONFIG_HOME;
+  try {
+    process.env.XDG_CONFIG_HOME = config;
+    await saveQuickVideoMode('apple');
+    await writeFile(join(dir, 'live.jpg'), jpeg());
+    const preview = cli(['quick', '--dry-run'], dir);
+    assert.equal(preview.status, 0, preview.stderr);
+    assert.match(preview.stdout, /计划提取 1 个视频/);
+    assert.match(preview.stdout, /Apple 兼容/);
+    assert.doesNotMatch(cli(['quick', '--dry-run', '--video-compat', 'original'], dir).stdout, /Apple 兼容/);
+    for (const mode of ['--json', '--agent']) {
+      assert.equal(JSON.parse(cli(['quick', '--dry-run', mode], dir).stdout).results[0].videoCompatibility, undefined);
+    }
+    await saveQuickVideoMode('original');
+    assert.doesNotMatch(cli(['quick', '--dry-run'], dir).stdout, /Apple 兼容/);
+  } finally {
+    if (previous === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previous;
+  }
 });

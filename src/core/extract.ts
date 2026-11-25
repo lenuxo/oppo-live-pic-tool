@@ -125,7 +125,15 @@ export async function executeExtraction(plan: ExtractionPlan): Promise<Extractio
     try { await validateMp4(mp4, { offset: 0, length: mp4.size }); } finally { await mp4.close(); }
     await reader.assertUnchanged(); options.signal?.throwIfAborted();
     if (tempImage && image) await transaction.publish(tempImage, image);
-    await transaction.publish(tempVideo, video);
+    try {
+      await transaction.publish(tempVideo, video);
+    } catch (e) {
+      // The destination can appear after planning, including on the exclusive-copy fallback.
+      if (options.videoOnly && (e as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new PhotoError('OUTPUT_CONFLICT', '输出文件已存在');
+      }
+      throw e;
+    }
     if (tempExtra && extra) await transaction.publish(tempExtra, extra);
     options.signal?.throwIfAborted();
     if (transaction.usedCopyFallback) result.warnings = ['输出文件系统不支持硬链接，已通过独占创建与分块复制提交'];
@@ -137,6 +145,9 @@ export async function executeExtraction(plan: ExtractionPlan): Promise<Extractio
     throw options.signal.reason;
   }
   if (failure !== undefined || cleanupIssues.length) {
+    if (!cleanupIssues.length && options.conflict === 'skip' && failure instanceof PhotoError && failure.code === 'OUTPUT_CONFLICT') {
+      return { input: inspection.input, status: 'skipped', code: failure.code, reason: failure.message };
+    }
     return {
       input: inspection.input, status: 'failed',
       code: cleanupIssues.length ? 'CLEANUP_FAILED' : failure instanceof PhotoError ? failure.code : (failure as NodeJS.ErrnoException)?.code ?? 'WRITE_ERROR',
